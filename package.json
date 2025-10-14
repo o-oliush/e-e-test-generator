@@ -1,0 +1,67 @@
+{
+  "name": "playwright-testgen-vscode-extension",
+  "displayName": "Playwright Test Generator",
+  "description": "Generate Playwright tests from a browser recording or text description.",
+  "version": "0.0.1",
+  "publisher": "your-publisher-id",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "testgen.generateFromVideo",
+        "title": "TestGen: Generate Playwright Test from Video"
+      },
+      {
+        "command": "testgen.generateFromText",
+        "title": "TestGen: Generate Playwright Test from Text"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "TestGen Settings",
+      "properties": {
+        "testgen.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Path to Python executable (for the video processor)."
+        },
+        "testgen.videoProcessorPath": {
+          "type": "string",
+          "default": "${workspaceFolder}/video_processor.py",
+          "description": "Path to the Python video processor script."
+        },
+        "testgen.outputDir": {
+          "type": "string",
+          "default": "tests",
+          "description": "Relative folder to write generated Playwright tests."
+        },
+        "testgen.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "Base URL for the app under test (used if no navigation detected)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "package": "vsce package",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.10",
+    "@types/vscode": "^1.85.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.3",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "simple-git": "^3.22.0"
+  }
+}
