@@ -36,12 +36,10 @@ const upload = multer({ storage });
 
 const openAIapiKey = process.env.OPENAI_API_KEY || 'api_key';
 const defaultModel = process.env.OPENAI_MODEL || 'gpt-5';
+const openai = new OpenAI({ apiKey: openAIapiKey });
 
-// Only create OpenAI instance if we have a real API key
-const openai = (openAIapiKey && openAIapiKey !== 'api_key') ? new OpenAI({ apiKey: openAIapiKey }) : null;
-
-// Only create test analyzer if we have a real API key
-const testAnalyzer = (openAIapiKey && openAIapiKey !== 'api_key') ? new TestResultAnalyzer(openAIapiKey, defaultModel) : null;
+// Initialize test result analyzer
+const testAnalyzer = new TestResultAnalyzer(openAIapiKey, defaultModel);
 
 async function callOpenAI({ systemPrompt, userPrompt }) {
   if (!openai) {
@@ -169,12 +167,7 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
     const aiContent = aiMessage.content || '';
     
     // Analyze the test result to determine success/failure
-    const analysis = testAnalyzer ? await testAnalyzer.analyzeTestResult(aiContent) : {
-      success: null,
-      confidence: 0,
-      reason: 'Test analyzer not available',
-      method: 'none'
-    };
+    const analysis = await testAnalyzer.analyzeTestResult(aiContent);
 
     res.json({
       result: aiContent,
@@ -202,9 +195,6 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/api/test1', async (_req, res) => {
-  if (!testAnalyzer) {
-    return res.status(503).json({ error: 'Test analyzer not available - API key not configured' });
-  }
 
   const testResult = `
       ## Test Results for Best Laptop Deals
@@ -278,9 +268,6 @@ The test executions for navigating, filtering, and adding items to the cart on t
 });
 
 app.get('/api/test2', async (_req, res) => {
-  if (!testAnalyzer) {
-    return res.status(503).json({ error: 'Test analyzer not available - API key not configured' });
-  }
    const testResult = `
       ## Test Results for Best Laptop Deals
 
