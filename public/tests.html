@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stored Test Prompts</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Stored Test Prompts</h1>
+      <p class="subtitle">Browse saved Markdown tests, expand their content, and run them on demand.</p>
+      <nav class="primary-nav" role="navigation" aria-label="Primary">
+        <a class="nav-link" href="index.html">Test Generator</a>
+        <a class="nav-link active" href="tests.html" aria-current="page">Stored Test Prompts</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="panel" id="tests-panel">
+        <h2>Saved prompts</h2>
+        <div id="tests-list" class="list" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <template id="test-item-template">
+      <article class="test-item">
+        <div class="test-header">
+          <button class="test-toggle" type="button" aria-expanded="false">
+            <strong class="test-heading"></strong>
+          </button>
+          <div class="test-toolbar">
+            <button class="run-button" type="button">Run</button>
+          </div>
+        </div>
+        <div class="test-feedback" hidden>
+          <div class="test-status" aria-live="polite">
+            <span class="status-chip" aria-hidden="true"></span>
+            <div class="status-text">
+              <p class="status-summary"></p>
+              <p class="status-meta"></p>
+            </div>
+          </div>
+          <button class="result-toggle" type="button" hidden aria-expanded="false">View execution log</button>
+          <button class="history-toggle" type="button" hidden aria-expanded="false">Show run history</button>
+          <div class="history-panel" hidden>
+            <ul class="history-list"></ul>
+            <p class="history-empty" hidden>No previous runs yet.</p>
+          </div>
+          <div class="test-result markdown-content" hidden></div>
+        </div>
+        <div class="test-content markdown-content" hidden></div>
+      </article>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js" defer></script>
+    <script src="tests.js" defer></script>
+  </body>
+</html>
