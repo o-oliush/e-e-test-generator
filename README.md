@@ -5,6 +5,7 @@ This project demonstrates a lightweight full-stack workflow for generating and r
 ## Features
 
 - 📁 Upload contextual video or supporting files that will be forwarded to the AI when requesting new prompts.
+- 🎞️ Large videos are automatically split into 100 ms PNG frames and included in requests without exceeding attachment limits.
 - 💬 Send free-form instructions to OpenAI's API to generate detailed Markdown test plans.
 - 🗂️ Persist AI-generated prompts as Markdown files within the local `tests/` directory and list them in the UI.
 - ▶️ Run any stored test prompt by resending it to the AI for simulated execution or verification.
@@ -40,3 +41,4 @@ uploads/       # Temporary storage for uploaded files (gitignored)
 
 - AI interactions require valid OpenAI credentials. When the API key is missing, the server responds with an explanatory message and still stores the generated files.
 - Uploaded files are encoded to base64 and appended to the user prompt when calling the AI, ensuring the model can reference them without additional hosting infrastructure.
+- Video uploads are processed on the server with FFmpeg; frames are streamed back to the browser and relayed to the AI alongside other attachments.

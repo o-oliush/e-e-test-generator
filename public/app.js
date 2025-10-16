@@ -7,6 +7,19 @@ const activityLog = document.getElementById('activity-log');
 const testTemplate = document.getElementById('test-item-template');
 
 const uploadedFiles = [];
+const processedVideos = [];
+const videoExtensions = new Set(['mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v']);
+
+function isLikelyVideo(file) {
+  if (!file) return false;
+  if (file.type && file.type.startsWith('video/')) {
+    return true;
+  }
+
+  const name = file.name || '';
+  const extension = name.split('.').pop()?.toLowerCase();
+  return extension ? videoExtensions.has(extension) : false;
+}
 
 function addLogEntry(title, body, variant = 'info') {
   const entry = document.createElement('div');
@@ -26,21 +39,46 @@ function addLogEntry(title, body, variant = 'info') {
 }
 
 function renderUploadedFiles() {
-  if (uploadedFiles.length === 0) {
+  if (uploadedFiles.length === 0 && processedVideos.length === 0) {
     uploadedFilesContainer.textContent = 'No files uploaded yet.';
     return;
   }
 
-  const list = document.createElement('ul');
-  list.className = 'file-list';
-  uploadedFiles.forEach((file) => {
-    const item = document.createElement('li');
-    item.textContent = file.originalName || file.fileId;
-    list.appendChild(item);
-  });
+  const fragment = document.createDocumentFragment();
+
+  if (uploadedFiles.length > 0) {
+    const header = document.createElement('h4');
+    header.textContent = 'Files ready for upload:';
+    fragment.appendChild(header);
+
+    const list = document.createElement('ul');
+    list.className = 'file-list';
+    uploadedFiles.forEach((file) => {
+      const item = document.createElement('li');
+      item.textContent = file.originalName || file.fileId;
+      list.appendChild(item);
+    });
+    fragment.appendChild(list);
+  }
+
+  if (processedVideos.length > 0) {
+    const header = document.createElement('h4');
+    header.textContent = 'Processed videos:';
+    fragment.appendChild(header);
+
+    const list = document.createElement('ul');
+    list.className = 'file-list';
+    processedVideos.forEach((video) => {
+      const item = document.createElement('li');
+      const frameCount = video.frames?.length || 0;
+      item.textContent = `${video.originalName} — ${frameCount} frame${frameCount === 1 ? '' : 's'} @ ${video.frameIntervalMs}ms`;
+      list.appendChild(item);
+    });
+    fragment.appendChild(list);
+  }
 
   uploadedFilesContainer.innerHTML = '';
-  uploadedFilesContainer.appendChild(list);
+  uploadedFilesContainer.appendChild(fragment);
 }
 
 async function uploadFile(file) {
@@ -70,13 +108,46 @@ async function uploadFile(file) {
   }
 }
 
+async function processVideo(file) {
+  const formData = new FormData();
+  formData.append('video', file);
+
+  try {
+    const response = await fetch('/api/video/frames', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error(`Video processing failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    processedVideos.push({
+      originalName: file.name,
+      frameIntervalMs: data.frameIntervalMs,
+      frames: data.frames
+    });
+    renderUploadedFiles();
+    const frameCount = data.frames?.length ?? 0;
+    addLogEntry('Video processed', `Extracted ${frameCount} frame${frameCount === 1 ? '' : 's'} from ${file.name}.`, 'success');
+  } catch (error) {
+    console.error('Video processing failed', error);
+    addLogEntry('Video processing failed', `${file.name}: ${error.message}`, 'error');
+  }
+}
+
 async function handleFileSelection(event) {
   const files = Array.from(event.target.files || []);
   if (files.length === 0) return;
 
   addLogEntry('Uploading files', `Preparing ${files.length} file(s)...`);
   for (const file of files) {
-    await uploadFile(file);
+    if (isLikelyVideo(file)) {
+      await processVideo(file);
+    } else {
+      await uploadFile(file);
+    }
   }
   fileInput.value = '';
 }
@@ -160,7 +231,8 @@ async function submitMessage(event) {
       },
       body: JSON.stringify({
         message: text,
-        files: uploadedFiles
+        files: uploadedFiles,
+        videos: processedVideos
       })
     });
 
@@ -198,6 +270,5 @@ function prependTest(test) {
 
 fileInput.addEventListener('change', handleFileSelection);
 messageForm.addEventListener('submit', submitMessage);
-
 renderUploadedFiles();
 fetchTests();
