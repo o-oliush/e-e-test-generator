@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { OpenAI } = require('openai');
+const { extractVideoFrames } = require('./videoFrameExtractor');
 
 // this object help to identify if the test passed or failed based on the LLM output
 const TestResultAnalyzer = require('./testResultAnalyzer');
@@ -20,8 +21,8 @@ for (const dir of [testsDir, uploadsDir, resultsDir]) {
   }
 }
 
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const storage = multer.diskStorage({
@@ -114,6 +115,27 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
   });
 });
 
+app.post('/api/video/frames', upload.single('video'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No video file uploaded.' });
+  }
+
+  const uploadedPath = path.join(uploadsDir, req.file.filename);
+
+  try {
+    const frames = await extractVideoFrames({ inputPath: uploadedPath, frameIntervalMs: 100 });
+    res.json({
+      frames,
+      frameIntervalMs: 100
+    });
+  } catch (error) {
+    console.error('Failed to extract video frames', error);
+    res.status(500).json({ error: 'Failed to extract frames from the uploaded video.' });
+  } finally {
+    await fs.promises.unlink(uploadedPath).catch(() => {});
+  }
+});
+
 app.get('/api/tests', async (_req, res) => {
   try {
     const files = await fs.promises.readdir(testsDir);
@@ -169,7 +191,7 @@ app.get('/api/tests/:fileId', async (req, res) => {
 });
 
 app.post('/api/message', async (req, res) => {
-  const { message, files = [] } = req.body || {};
+  const { message, files = [], videos = [] } = req.body || {};
 
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'Message is required.' });
@@ -186,6 +208,37 @@ app.post('/api/message', async (req, res) => {
       const base64 = fileBuffer.toString('base64');
       const label = file.originalName || file.fileId;
       promptWithFiles += `\n\nAttached file (${label}) base64:\n${base64}`;
+    }
+
+    if (Array.isArray(videos)) {
+      for (const video of videos) {
+        if (!video || !Array.isArray(video.frames) || video.frames.length === 0) {
+          continue;
+        }
+
+        const label = video.originalName || 'uploaded-video';
+        const interval = Number.isFinite(Number(video.frameIntervalMs)) ? Number(video.frameIntervalMs) : null;
+        const header = interval
+          ? `Video (${label}) frames every ${interval}ms`
+          : `Video (${label}) frames`;
+
+        promptWithFiles += `\n\n${header}:`;
+
+        for (const frame of video.frames) {
+          if (!frame || typeof frame.data !== 'string' || frame.data.length === 0) {
+            continue;
+          }
+
+          const timestamp = Number.isFinite(Number(frame.timestampMs)) ? Number(frame.timestampMs) : null;
+          const frameIndex = Number.isFinite(Number(frame.index)) ? Number(frame.index) : null;
+          const frameLabel = timestamp !== null
+            ? `Timestamp ${timestamp}ms`
+            : frameIndex !== null
+              ? `Frame ${frameIndex}`
+              : 'Frame';
+          promptWithFiles += `\n- ${frameLabel} (${frame.mimeType || 'image/png'}) base64:\n${frame.data}`;
+        }
+      }
     }
 
     const systemPrompt = 'You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. Include clear titles and step-by-step instructions.';

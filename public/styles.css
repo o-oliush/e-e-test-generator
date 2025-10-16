@@ -147,6 +147,12 @@ button:disabled {
   background: rgba(255, 125, 45, 0.12);
 }
 
+#uploaded-files h4 {
+  margin: 0.5rem 0 0.35rem;
+  font-size: 1rem;
+  color: #e0e7ff;
+}
+
 .file-list {
   margin: 0;
   padding-left: 1.25rem;
