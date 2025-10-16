@@ -249,9 +249,9 @@ function showNoRunState(container) {
   wrapper.hidden = false;
 
   if (chip) {
-    chip.hidden = true;
-    chip.textContent = '';
-    chip.className = 'status-chip';
+    chip.hidden = false;
+    chip.textContent = '—';
+    chip.className = 'status-chip status-empty';
   }
 
   if (summary) {
