@@ -27,7 +27,7 @@ describe('TestResultAnalyzer', () => {
     analyzer = new TestResultAnalyzer('fake-api-key');
     analyzerWithoutAI = new TestResultAnalyzer();
     analyzerWithAI = new TestResultAnalyzer(
-        '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', 
+        'fake-api-key', 
         'gpt-5');
     
     // Get mock OpenAI instance
