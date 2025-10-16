@@ -1,4 +1,4 @@
-const { OpenAI } = require('openai');
+import { OpenAI } from 'openai';
 
 /**
  * Test Result Analyzer
@@ -234,4 +234,4 @@ Respond only with valid JSON in the specified format.`;
   }
 }
 
-module.exports = TestResultAnalyzer;
+export default TestResultAnalyzer;

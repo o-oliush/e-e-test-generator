@@ -1,11 +1,22 @@
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const { OpenAI } = require('openai');
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { OpenAI } from 'openai';
+import { fileURLToPath } from 'url';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // this object help to identify if the test passed or failed based on the LLM output
-const TestResultAnalyzer = require('./testResultAnalyzer');
+//const TestResultAnalyzer = require('./testResultAnalyzer');
+
+// Import video analysis functions
+import { extractFrames, askAboutFrames } from './video-help.js';
+
+// Import test result analyzer
+import TestResultAnalyzer from './testResultAnalyzer.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -35,7 +46,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const openAIapiKey = 'api_key';
+const openAIapiKey = 'api-key';
 const defaultModel = 'gpt-5';
 const openai = new OpenAI({ apiKey: openAIapiKey });
 
@@ -48,6 +59,7 @@ async function callOpenAI({ systemPrompt, userPrompt }) {
       content: 'OpenAI API key not configured. Set OPENAI_API_KEY to enable AI responses.'
     };
   }
+
 
   const completion = await openai.chat.completions.create({
     model: defaultModel,
@@ -176,26 +188,79 @@ app.post('/api/message', async (req, res) => {
   }
 
   try {
-    let promptWithFiles = message;
 
+    let filePath1;
     for (const file of files) {
-      if (!file?.fileId) continue;
-      const filePath = path.join(uploadsDir, path.basename(file.fileId));
-      if (!fs.existsSync(filePath)) continue;
-      const fileBuffer = await fs.promises.readFile(filePath);
-      const base64 = fileBuffer.toString('base64');
-      const label = file.originalName || file.fileId;
-      promptWithFiles += `\n\nAttached file (${label}) base64:\n${base64}`;
+      filePath1 = path.join(uploadsDir, path.basename(file.fileId));
     }
 
-    const systemPrompt = 'You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. Include clear titles and step-by-step instructions.';
-    const aiMessage = await callOpenAI({
-      systemPrompt,
-      userPrompt: promptWithFiles
-    });
+    const videoPath = filePath1;
+    const outputDir = "./frames";
+    const frameCount = 100; // should be calculated based on video length
+    let aiContent = '';
+    try {
+      console.log("Extracting frames...");
+      const frames = await extractFrames(videoPath, outputDir, frameCount);
+      console.log(`Extracted ${frames.length} frames.`);
 
-    const aiContent = aiMessage.content || '';
+      // Inline askAboutFrames implementation
+      try {
+        const systemPrompt = `You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. 
+        Include clear titles and step-by-step instructions. 
+        Expected result of the test: ` + message;
+        console.log(`Analyzing ${frames.length} frames with OpenAI...`);        
+        // Prepare image inputs for OpenAI vision API
+        const imageInputs = frames.map((filePath) => ({
+          type: "image_url",
+          image_url: {
+            url: `data:image/jpeg;base64,${fs.readFileSync(filePath, 'base64')}`
+          }
+        }));
 
+        // Create the message content with text and images
+        const content = [
+          { type: "text", text: systemPrompt },
+          ...imageInputs
+        ];
+
+        const response = await openai.chat.completions.create({
+          model: "gpt-5", 
+          messages: [
+            {
+              role: "user",
+              content: content
+            }
+          ]
+        });
+
+        const result = response.choices[0].message.content || '';
+        console.log("Model output:");
+        console.log(result);
+        aiContent = result;
+        
+        // Clean up extracted frames after analysis
+        console.log("Cleaning up extracted frames...");
+        for (const framePath of frames) {
+          try {
+            if (fs.existsSync(framePath)) {
+              fs.unlinkSync(framePath);
+            }
+          } catch (cleanupError) {
+            console.warn(`Could not delete frame ${framePath}:`, cleanupError.message);
+          }
+        }
+        console.log(`Cleaned up ${frames.length} frame files`);
+
+      } catch (analysisError) {
+        console.error('Error in video analysis:', analysisError);
+        throw new Error(`OpenAI analysis failed: ${analysisError.message}`);
+      }
+      
+    } catch (err) {
+      console.error("Error:", err);
+      // Continue with text-only processing if video fails
+    }
+    
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `test-${timestamp}.md`;
     const filePath = path.join(testsDir, filename);
