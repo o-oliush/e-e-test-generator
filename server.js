@@ -1,8 +1,20 @@
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const { OpenAI } = require('openai');
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { OpenAI } from 'openai';
+import { fileURLToPath } from 'url';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// this object help to identify if the test passed or failed based on the LLM output
+//const TestResultAnalyzer = require('./testResultAnalyzer');
+
+// Import video analysis functions
+import { extractFrames, askAboutFrames } from './video-help.js';
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,44 +43,26 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
-const defaultModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const openAIapiKey = 'api-key';
+const defaultModel = 'gpt-5';
+const openai = new OpenAI({ apiKey: openAIapiKey });
 
-async function callOpenAI({ systemPrompt, userPrompt, files }) {
+// Initialize test result analyzer
+//const testAnalyzer = new TestResultAnalyzer(openAIapiKey, defaultModel);
+
+async function callOpenAI({ systemPrompt, userPrompt }) {
   if (!openai) {
     return {
       content: 'OpenAI API key not configured. Set OPENAI_API_KEY to enable AI responses.'
     };
   }
 
-  const content = [{
-    type: 'input_text',
-    text: userPrompt
-  }]
 
-  if (files != null) {
-    const mappedFiles = await Promise.all(files.map(async (filePath) => {
-      console.log("📤 Uploading file...");
-      const file = await openai.files.create({
-        file: fs.createReadStream(filePath),
-        purpose: "user_data", // allows model to access the file
-      });
-      console.log("✅ Uploaded:", file.id);
-      return file.id;
-    }))
-    mappedFiles.forEach((file_id) => {
-      content.push({
-        type: 'input_file',
-        file_id
-      })
-    })
-  }
-
-  const completion = await openai.responses.create({
+  const completion = await openai.chat.completions.create({
     model: defaultModel,
-    input: [
+    messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content }
+      { role: 'user', content: userPrompt }
     ]
   });
 
@@ -122,77 +116,88 @@ app.get('/api/tests', async (_req, res) => {
 });
 
 app.post('/api/message', async (req, res) => {
-  const { url, message, files = [] } = req.body || {};
+  const { message, files = [] } = req.body || {};
 
-  if (!url || typeof url !== 'string') {
-    return res.status(400).json({ error: 'URL is required.' });
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ error: 'Message is required.' });
   }
 
   try {
-    const queryFiles = [];
 
+    let filePath1;
     for (const file of files) {
-      if (!file?.fileId) continue;
-      const filePath = path.join(uploadsDir, path.basename(file.fileId));
-      if (!fs.existsSync(filePath)) continue;
-      queryFiles.push(filePath);
-      // const fileBuffer = await fs.promises.readFile(filePath);
-      // queryFiles.push({
-      //   filename: file.originalName || file.fileId,
-      //   file_data: `data:video/mp4;base64,${fileBuffer.toString('base64')}`
-      // });
+      filePath1 = path.join(uploadsDir, path.basename(file.fileId));
     }
 
-    const aiMessage = await callOpenAI({
-      systemPrompt: `
-You are an experienced software developer with common sense.
-The goal is to write a high-quality prompt for an end-to-end test (using natural language and Markdown format) that reproduces my interactions and verifies the final expected result.
+    const videoPath = filePath1;
+    const outputDir = "./frames";
+    const frameCount = 100; // should be calculated based on video length
+    let aiContent = '';
+    try {
+      console.log("🎬 Extracting frames...");
+      const frames = await extractFrames(videoPath, outputDir, frameCount);
+      console.log(`✅ Extracted ${frames.length} frames.`);
 
-${files.length ? `
-Watch the attached video carefully and extract a complete, detailed, step-by-step description of all actions I perform on the website.
+      // Inline askAboutFrames implementation
+      try {
+        const systemPrompt = `You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. 
+        Include clear titles and step-by-step instructions. 
+        Expected result of the test: ` + message;
+        console.log(`🧠 Analyzing ${frames.length} frames with OpenAI...`);        
+        // Prepare image inputs for OpenAI vision API
+        const imageInputs = frames.map((filePath) => ({
+          type: "image_url",
+          image_url: {
+            url: `data:image/jpeg;base64,${fs.readFileSync(filePath, 'base64')}`
+          }
+        }));
 
-Analyze the video frame by frame and list every visible user action:
-* All mouse movements, clicks, scrolls, and hovers
-* Any filters, dropdowns, or checkboxes interacted with
-* Text typed into inputs
-* Page loads, transitions, or visible UI updates
-* Elements that change visibility or state (like filters applying)
+        // Create the message content with text and images
+        const content = [
+          { type: "text", text: systemPrompt },
+          ...imageInputs
+        ];
 
-When analyzing the video, if you detect any differences between the video behavior and the current live site’s DOM, prioritize actual live selectors (run a live inspection on the site to extract accurate attributes, class names, roles, and labels).
-` : ''}
+        const response = await openai.chat.completions.create({
+          model: "gpt-5", 
+          messages: [
+            {
+              role: "user",
+              content: content
+            }
+          ]
+        });
 
-For each action, include:
-* A sequential step number
-* The element interacted with (by label, text, or CSS selector if identifiable)
-* The purpose or expected effect of the action
-
-After listing all steps, create a ready-to-run prompt that executes the same workflow against the live production site, not staging or local environments.
-
-Do not ask for clarification — assume the video and these instructions contain all context you need.
-
-Include in your answer:
-* The URL for the website to test
-* The full detailed action list from the video with clear titles
-* Any ambiguities or assumptions (e.g., dynamic filters, pagination)
-      `.trim(),
-      userPrompt: `
-Website under test: ${url}
-
-${message ? `
-Test steps instructions:
-${message}
-` : ''}
-      `.trim(),
-      files: queryFiles
-    });
-
-    const aiContent = aiMessage.content || '';
-
-    const safeUrl = url
-      .replace(/\W+/g, '-')
-      .replace(/(^\W+)|(\W+$)/g, '');
+        const result = response.choices[0].message.content || '';
+        console.log("🧠 Model output:");
+        console.log(result);
+        aiContent = result;
+        
+        // Clean up extracted frames after analysis
+        console.log("🧹 Cleaning up extracted frames...");
+        for (const framePath of frames) {
+          try {
+            if (fs.existsSync(framePath)) {
+              fs.unlinkSync(framePath);
+            }
+          } catch (cleanupError) {
+            console.warn(`⚠️ Could not delete frame ${framePath}:`, cleanupError.message);
+          }
+        }
+        console.log(`✅ Cleaned up ${frames.length} frame files`);
+        
+      } catch (analysisError) {
+        console.error('❌ Error in video analysis:', analysisError);
+        throw new Error(`OpenAI analysis failed: ${analysisError.message}`);
+      }
+      
+    } catch (err) {
+      console.error("❌ Error:", err);
+      // Continue with text-only processing if video fails
+    }
+    
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `test-${safeUrl}-${timestamp}.md`;
+    const filename = `test-${timestamp}.md`;
     const filePath = path.join(testsDir, filename);
     await fs.promises.writeFile(filePath, aiContent, 'utf8');
 
@@ -222,10 +227,21 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
     const userPrompt = `Execute or verify the following test prompt:\n\n${content}`;
     const aiMessage = await callOpenAI({ systemPrompt, userPrompt });
 
+    const aiContent = aiMessage.content || '';
+    
+    // Analyze the test result to determine success/failure
+    const analysis = await testAnalyzer.analyzeTestResult(aiContent);
+
     res.json({
-      result: aiMessage.content || '',
+      result: aiContent,
       test: {
         fileId: safeFile
+      },
+      analysis: {
+        success: analysis.success,
+        confidence: analysis.confidence,
+        reason: analysis.reason,
+        method: analysis.method
       }
     });
   } catch (error) {
@@ -239,6 +255,150 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
+});
+
+app.get('/api/test1', async (_req, res) => {
+
+  const testResult = `
+      ## Test Results for Best Laptop Deals
+
+### Test Execution Summary
+The end-to-end test script for "Best Laptop Deals" was executed as per the provided steps. Below is the report detailing each step, including actions taken, observations, and whether the expectations were met.
+
+### Step-by-Step Results
+
+1. **Navigate to https://www.bestlaptop.deals.**
+   - **Result**: Navigation successful. The page loads without any issues.
+
+2. **Focus on the search bar and type "laptop".**
+   - **Result**: Focused successfully, typed "laptop".
+
+3. **Click the search button next to the search bar.**
+   - **Result**: Search initiated; results page loading.
+
+4. **Confirm that the search results header indicates results for "laptop".**
+   - **Result**: Search results header confirmed, displaying results relevant to "laptop".
+
+5. **Hover over the "Brands" filter section.**
+   - **Result**: Hover action successful; the filter menu displayed.
+
+6. **Click to open the brand dropdown menu.**
+   - **Result**: Dropdown menu opened successfully.
+
+7. **Select the Dell checkbox from the dropdown options.**
+   - **Result**: Dell checkbox selected.
+
+8. **Click the apply button to apply the selected filters.**
+   - **Result**: Filter applied successfully; results refreshed.
+
+9. **Verify that results are updated to display only Dell laptops.**
+   - **Result**: Results confirmed to display only Dell laptops.
+
+10. **Hover over the first laptop displayed in the search results.**
+    - **Result**: Hover action successful; additional options displayed.
+
+11. **Click the details button for that laptop.**
+    - **Result**: Navigated to the laptop details page successfully.
+
+12. **Wait for the laptop details page to fully load.**
+    - **Result**: Laptop details page loaded completely.
+
+13. **Click the "Add to Cart" button on the laptop details page.**
+    - **Result**: Laptop successfully added to the shopping cart.
+
+14. **Click the cart icon in the top right corner.**
+    - **Result**: Cart opened successfully.
+
+15. **Verify that the item is present in the shopping cart.**
+    - **Result**: Item confirmed in the shopping cart.
+
+### Final Outcome
+- **Confirmation that Dell brand laptops are displayed**: **Successful**
+- **Successful navigation to the laptop details page**: **Successful**
+- **Confirmation that the laptop has been added to the shopping cart**: **Successful**
+
+### Overall Test Conclusion
+The test executions for navigating, filtering, and adding items to the cart on the "Best Laptop Deals" website were all successful. All actions performed as intended, and the expectations were met successfully throughout the test. 
+
+**All steps executed without errors, and the expected results were validated.** The test has been concluded with a status of **PASS**.
+      `;
+      const result = await testAnalyzer.analyzeTestResult(testResult);
+      
+      // expect(result.success).toBe(true);
+      // expect(result.confidence).toBeGreaterThan(0.7);
+      
+      res.json({ status: 'ok', result: result.success, confidence: result.confidence, expectedReasult: true });
+});
+
+app.get('/api/test2', async (_req, res) => {
+   const testResult = `
+      ## Test Results for Best Laptop Deals
+
+### Test Execution Summary
+The end-to-end test script for "Best Laptop Deals" was executed as per the provided steps. Below is the report detailing each step, including actions taken, observations, and whether the expectations were met.
+
+### Step-by-Step Results
+
+1. **Navigate to https://www.bestlaptop.deals.**
+   - **Result**: Navigation successful. The page loads without any issues.
+
+2. **Focus on the search bar and type "laptop".**
+   - **Result**: Focused successfully, typed "laptop".
+
+3. **Click the search button next to the search bar.**
+   - **Result**: Search initiated; results page loading.
+
+4. **Confirm that the search results header indicates results for "laptop".**
+   - **Result**: Search results header confirmed, displaying results relevant to "laptop".
+
+5. **Hover over the "Brands" filter section.**
+   - **Result**: Hover action successful; the filter menu displayed.
+
+6. **Click to open the brand dropdown menu.**
+   - **Result**: Dropdown menu opened successfully.
+
+7. **Select the Dell checkbox from the dropdown options.**
+   - **Result**: Dell checkbox selected.
+
+8. **Click the apply button to apply the selected filters.**
+   - **Result**: Filter applied successfully; results refreshed.
+
+9. **Verify that results are updated to display only Dell laptops.**
+   - **Result**: Results confirmed to display only Dell laptops.
+
+10. **Hover over the first laptop displayed in the search results.**
+    - **Result**: Hover action successful; additional options displayed.
+
+11. **Click the details button for that laptop.**
+    - **Result**: Navigated to the laptop details page successfully.
+
+12. **Wait for the laptop details page to fully load.**
+    - **Result**: Laptop details page loaded completely.
+
+13. **Click the "Add to Cart" button on the laptop details page.**
+    - **Result**: Laptop successfully added to the shopping cart.
+
+14. **Click the cart icon in the top right corner.**
+    - **Result**: Cart opened successfully.
+
+15. **Verify that the item is present in the shopping cart.**
+    - **Result**: Item confirmed in the shopping cart.
+
+### Final Outcome
+- **Confirmation that Dell brand laptops are displayed**: **Failed**
+- **Successful navigation to the laptop details page**: **Successful**
+- **Confirmation that the laptop has been added to the shopping cart**: **Successful**
+
+### Overall Test Conclusion
+The test executions for navigating, filtering, and adding items to the cart on the "Best Laptop Deals" website were all failed. All actions performed as intended, and the expectations were met successfully throughout the test.
+
+**Some steps executed with errors, and the expected results were validated.** The test has been concluded with a status of **FAIL**.
+      `;
+      const result = await testAnalyzer.analyzeTestResult(testResult);
+      console.log('Test analysis result:', result);
+      // expect(result.success).toBe(false);
+      // expect(result.confidence).toBeGreaterThan(0.7);
+  res.json({ status: 'ok', result: result.success, confidence: result.confidence, expectedReasult: false });
 });
 
 app.listen(PORT, () => {
