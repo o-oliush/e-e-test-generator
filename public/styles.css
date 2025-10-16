@@ -50,13 +50,12 @@ main {
   font-size: 1.5rem;
 }
 
-#file-input {
-  margin-top: 1rem;
+input, textarea, .info-box {
+    margin-bottom: 1rem;
 }
 
-textarea {
+input[type="text"], textarea {
   width: 100%;
-  resize: vertical;
   padding: 0.75rem;
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -65,8 +64,11 @@ textarea {
   font-size: 1rem;
 }
 
+textarea {
+  resize: vertical;
+}
+
 button {
-  margin-top: 0.75rem;
   padding: 0.7rem 1.5rem;
   border-radius: 999px;
   border: none;
@@ -92,7 +94,6 @@ button:disabled {
 }
 
 .info-box {
-  margin-top: 1rem;
   padding: 0.75rem;
   border-radius: 12px;
   border: 1px dashed rgba(148, 163, 184, 0.45);

@@ -99,14 +99,14 @@ app.get('/api/tests', async (_req, res) => {
 });
 
 app.post('/api/message', async (req, res) => {
-  const { message, files = [] } = req.body || {};
+  const { url, message, files = [] } = req.body || {};
 
-  if (!message || typeof message !== 'string') {
-    return res.status(400).json({ error: 'Message is required.' });
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL is required.' });
   }
 
   try {
-    let promptWithFiles = message;
+    const fileContent = [];
 
     for (const file of files) {
       if (!file?.fileId) continue;
@@ -115,19 +115,63 @@ app.post('/api/message', async (req, res) => {
       const fileBuffer = await fs.promises.readFile(filePath);
       const base64 = fileBuffer.toString('base64');
       const label = file.originalName || file.fileId;
-      promptWithFiles += `\n\nAttached file (${label}) base64:\n${base64}`;
+      fileContent.push(`* ${label} base64:\n${base64}`);
     }
 
-    const systemPrompt = 'You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. Include clear titles and step-by-step instructions.';
     const aiMessage = await callOpenAI({
-      systemPrompt,
-      userPrompt: promptWithFiles
+      systemPrompt: `
+You are an experienced software developer with common sense.
+The goal is to write a high-quality prompt for an end-to-end test (using natural language and Markdown format) that reproduces my interactions and verifies the final expected result.
+
+${fileContent.length ? `
+Watch the attached video carefully and extract a complete, detailed, step-by-step description of all actions I perform on the website.
+
+Analyze the video frame by frame and list every visible user action:
+* All mouse movements, clicks, scrolls, and hovers
+* Any filters, dropdowns, or checkboxes interacted with
+* Text typed into inputs
+* Page loads, transitions, or visible UI updates
+* Elements that change visibility or state (like filters applying)
+
+When analyzing the video, if you detect any differences between the video behavior and the current live site’s DOM, prioritize actual live selectors (run a live inspection on the site to extract accurate attributes, class names, roles, and labels).
+` : ''}
+
+For each action, include:
+* A sequential step number
+* The element interacted with (by label, text, or CSS selector if identifiable)
+* The purpose or expected effect of the action
+
+After listing all steps, create a ready-to-run prompt that executes the same workflow against the live production site, not staging or local environments.
+
+Do not ask for clarification — assume the video and these instructions contain all context you need.
+
+Include in your answer:
+* The URL for the website to test
+* The full detailed action list from the video with clear titles
+* Any ambiguities or assumptions (e.g., dynamic filters, pagination)
+      `.trim(),
+      userPrompt: `
+Website under test: ${url}
+
+${message ? `
+Test steps instructions:
+${message}
+` : ''}
+
+${fileContent.length ? `
+Video files:
+${fileContent.join('\n\n')}
+` : ''}
+      `.trim()
     });
 
     const aiContent = aiMessage.content || '';
 
+    const safeUrl = url
+      .replace(/\W+/g, '-')
+      .replace(/(^\W+)|(\W+$)/g, '');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `test-${timestamp}.md`;
+    const filename = `test-${safeUrl}-${timestamp}.md`;
     const filePath = path.join(testsDir, filename);
     await fs.promises.writeFile(filePath, aiContent, 'utf8');
 
