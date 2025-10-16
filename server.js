@@ -2,6 +2,9 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
+const crypto = require('crypto');
+const ffmpegPath = require('ffmpeg-static');
 const { OpenAI } = require('openai');
 
 const app = express();
@@ -35,6 +38,23 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
 const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 const defaultModel = process.env.OPENAI_MODEL || 'gpt-5';
 
+function readInt(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+const FRAME_INTERVAL_MS = Math.max(50, readInt(process.env.VIDEO_FRAME_INTERVAL_MS, 100));
+const MAX_VIDEO_FRAMES = Math.max(1, readInt(process.env.MAX_VIDEO_FRAMES, 20));
+const FRAME_SCALE_WIDTH = Math.max(0, readInt(process.env.VIDEO_FRAME_WIDTH, 640));
+const FFMPEG_AVAILABLE = Boolean(ffmpegPath);
+
+function randomSuffix() {
+  if (typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function ensureOpenAI() {
   if (!openai) {
     return {
@@ -65,66 +85,126 @@ function buildOutputText(response) {
   return segments.join('\n');
 }
 
-async function uploadVideoToOpenAI({ filePath, mimeType }) {
-  if (!openai) return null;
-
-  const stats = await fs.promises.stat(filePath);
-  const filename = path.basename(filePath);
-  const effectiveMime = mimeType || 'video/mp4';
-
-  const streamFactory = () => fs.createReadStream(filePath);
-
-  let uploadSession = null;
-  try {
-    uploadSession = await openai.uploads.create({
-      purpose: 'vision',
-      filename,
-      bytes: stats.size,
-      mime_type: effectiveMime
-    });
-
-    const part = await openai.uploads.parts.create(uploadSession.id, {
-      data: streamFactory()
-    });
-
-    const completed = await openai.uploads.complete(uploadSession.id, {
-      part_ids: [part.id]
-    });
-
-    if (completed?.file?.id) {
-      return completed.file;
-    }
-  } catch (primaryError) {
-    if (uploadSession?.id) {
-      try {
-        await openai.uploads.cancel(uploadSession.id);
-      } catch (cancelError) {
-        console.error('Failed to cancel OpenAI upload session', cancelError);
-      }
-    }
-
-    try {
-      const file = await openai.files.create({
-        purpose: 'vision',
-        file: streamFactory()
-      });
-      if (file?.id) {
-        return file;
-      }
-    } catch (fallbackError) {
-      console.error('OpenAI Files API fallback failed', fallbackError);
-      const aggregateError = new Error('Failed to upload media via OpenAI Uploads or Files APIs.');
-      aggregateError.cause = { primaryError, fallbackError };
-      throw aggregateError;
-    }
-
-    throw new Error('OpenAI upload session completed without a resulting file.');
+function ensureFfmpegAvailable() {
+  if (!FFMPEG_AVAILABLE) {
+    throw new Error('FFmpeg binary not found. Install ffmpeg-static to enable frame extraction.');
   }
-
-  return null;
 }
 
-async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
+function runFfmpeg(args, options = {}) {
+  ensureFfmpegAvailable();
+
+  return new Promise((resolve, reject) => {
+    const ffmpeg = spawn(ffmpegPath, args, options);
+    const stderr = [];
+
+    ffmpeg.stderr.on('data', (chunk) => {
+      stderr.push(chunk.toString());
+    });
+
+    ffmpeg.on('error', (error) => {
+      reject(error);
+    });
+
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        const error = new Error(`FFmpeg exited with code ${code}`);
+        error.stderr = stderr.join('');
+        reject(error);
+      }
+    });
+  });
+}
+
+async function extractVideoFrames({
+  filePath,
+  outputDir,
+  intervalMs = FRAME_INTERVAL_MS,
+  maxFrames = MAX_VIDEO_FRAMES,
+  scaleWidth = FRAME_SCALE_WIDTH
+}) {
+  ensureFfmpegAvailable();
+
+  const fps = Math.max(1, Math.round(1000 / Math.max(intervalMs, 1)));
+  const filters = [`fps=${fps}`];
+  if (scaleWidth > 0) {
+    filters.push(`scale=${scaleWidth}:-1:flags=lanczos`);
+  }
+
+  const outputPattern = path.join(outputDir, 'frame-%04d.jpg');
+  const args = [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-i',
+    filePath,
+    '-vf',
+    filters.join(','),
+    '-vframes',
+    String(maxFrames),
+    '-qscale:v',
+    '2',
+    outputPattern
+  ];
+
+  await runFfmpeg(args);
+
+  const files = await fs.promises.readdir(outputDir);
+  return files
+    .filter((file) => file.toLowerCase().endsWith('.jpg'))
+    .sort()
+    .map((file) => path.join(outputDir, file));
+}
+
+async function uploadImageToOpenAI(framePath) {
+  if (!openai) return null;
+
+  const stream = fs.createReadStream(framePath);
+  const uploaded = await openai.files.create({
+    purpose: 'vision',
+    file: stream
+  });
+
+  return uploaded;
+}
+
+async function prepareVideoFramesForOpenAI({ filePath, label }) {
+  ensureFfmpegAvailable();
+
+  const tempDirPrefix = path.join(uploadsDir, `frames-${randomSuffix()}-`);
+  const framesDir = await fs.promises.mkdtemp(tempDirPrefix);
+
+  try {
+    const framePaths = await extractVideoFrames({
+      filePath,
+      outputDir: framesDir
+    });
+
+    const uploads = [];
+    let index = 0;
+    for (const framePath of framePaths) {
+      try {
+        const uploaded = await uploadImageToOpenAI(framePath);
+        if (uploaded?.id) {
+          uploads.push({
+            id: uploaded.id,
+            label: `${label} frame ${String(++index).padStart(2, '0')}`
+          });
+        }
+      } catch (error) {
+        console.error('Failed to upload video frame to OpenAI', error);
+      }
+    }
+
+    return { uploads, extractedFrames: framePaths.length };
+  } finally {
+    await fs.promises.rm(framesDir, { recursive: true, force: true });
+  }
+}
+
+async function callOpenAI({ systemPrompt, userPrompt, images = [] }) {
   const missingClient = ensureOpenAI();
   if (missingClient) {
     return missingClient;
@@ -132,12 +212,12 @@ async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
 
   const userContent = [{ type: 'input_text', text: userPrompt }];
 
-  if (Array.isArray(videos) && videos.length > 0) {
-    for (const video of videos) {
-      if (!video?.id) continue;
+  if (Array.isArray(images) && images.length > 0) {
+    for (const image of images) {
+      if (!image?.id) continue;
       userContent.push({
-        type: 'input_video',
-        video: { file_id: video.id }
+        type: 'input_image',
+        image: { file_id: image.id }
       });
     }
   }
@@ -218,7 +298,7 @@ app.post('/api/message', async (req, res) => {
 
   try {
     let promptWithFiles = message;
-    const videos = [];
+    const images = [];
 
     for (const file of files) {
       if (!file?.fileId) continue;
@@ -228,20 +308,38 @@ app.post('/api/message', async (req, res) => {
       const isVideo = (file.mimeType || '').startsWith('video/');
 
       if (isVideo) {
+        if (!openai) {
+          promptWithFiles += `\n\nVideo (${label}) cannot be processed because the OpenAI API is not configured.`;
+          continue;
+        }
+
+        if (!FFMPEG_AVAILABLE) {
+          promptWithFiles += `\n\nVideo (${label}) cannot be processed because FFmpeg is unavailable on the server.`;
+          continue;
+        }
+
         try {
-          const uploaded = await uploadVideoToOpenAI({
+          const { uploads, extractedFrames } = await prepareVideoFramesForOpenAI({
             filePath,
-            mimeType: file.mimeType
+            label
           });
 
-          if (uploaded?.id) {
-            videos.push({ id: uploaded.id, label });
-            promptWithFiles += `\n\nAttached video (${label}) uploaded as ${uploaded.id}.`;
-            continue;
+          if (uploads.length > 0) {
+            images.push(...uploads);
+            promptWithFiles += `\n\nExtracted ${uploads.length} frame(s) from video (${label}) at ~${FRAME_INTERVAL_MS}ms intervals for analysis.`;
+            if (extractedFrames > uploads.length) {
+              const failed = extractedFrames - uploads.length;
+              promptWithFiles += ` ${failed} frame(s) could not be uploaded.`;
+            }
+          } else if (extractedFrames === 0) {
+            promptWithFiles += `\n\nVideo (${label}) did not produce any frames for analysis.`;
+          } else {
+            promptWithFiles += `\n\nVideo (${label}) frames could not be uploaded to OpenAI. Please retry or provide a textual summary instead.`;
           }
         } catch (error) {
-          console.error('Failed to upload video to OpenAI', error);
-          promptWithFiles += `\n\nVideo (${label}) could not be uploaded to OpenAI. Please try again later or provide a compressed summary instead.`;
+          console.error('Failed to process video for OpenAI', error);
+          const reason = error?.message ? ` (${error.message})` : '';
+          promptWithFiles += `\n\nVideo (${label}) could not be processed for analysis${reason}.`;
         }
 
         continue;
@@ -260,7 +358,7 @@ app.post('/api/message', async (req, res) => {
     const aiMessage = await callOpenAI({
       systemPrompt,
       userPrompt: promptWithFiles,
-      videos
+      images
     });
 
     const aiContent = aiMessage.content || '';

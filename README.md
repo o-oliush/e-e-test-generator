@@ -5,9 +5,9 @@ This project demonstrates a lightweight full-stack workflow for generating and r
 ## Features
 
 - 📁 Upload contextual video or supporting files that will be forwarded to the AI when requesting new prompts. Video uploads are
-  staged through OpenAI's multipart Uploads API with the `vision` purpose (falling back to the legacy Files API) so large assets,
-  including `.mp4`, are accepted, then the resulting file IDs are embedded directly in `input_video` content blocks for GPT-5 to
-  fetch on demand.
+  converted into JPEG frame samples (every ~100 ms, up to 20 frames by default, scaled to 640 px wide) via the bundled FFmpeg
+  binary and each frame is uploaded to OpenAI with the `vision` purpose so GPT-5 can inspect them as standard `input_image`
+  attachments.
 - 💬 Send free-form instructions to OpenAI's API to generate detailed Markdown test plans.
 - 🗂️ Persist AI-generated prompts as Markdown files within the local `tests/` directory and list them in the UI.
 - ▶️ Run any stored test prompt by resending it to the AI for simulated execution or verification.
@@ -43,4 +43,10 @@ uploads/       # Temporary storage for uploaded files (gitignored)
 
 - AI interactions require valid OpenAI credentials. When the API key is missing, the server responds with an explanatory message and still stores the generated files.
 - Uploaded files are encoded to base64 and appended to the user prompt when calling the AI, ensuring the model can reference them without additional hosting infrastructure. Oversized attachments are skipped to avoid excessive token consumption.
-- Uploaded videos are staged with the Uploads API (falling back to the Files API when necessary) before being attached as `input_video` content parts, keeping large media assets compatible with GPT-5 without tripping image-only validation rules or token limits.
+- Uploaded videos are sampled into a bounded set of frames that are uploaded to OpenAI as vision images and referenced as `input_image` content parts, keeping GPT-5 requests within supported media formats while still conveying motion cues.
+
+### Video frame extraction controls
+
+- `VIDEO_FRAME_INTERVAL_MS` — target spacing between sampled frames (default: `100`).
+- `MAX_VIDEO_FRAMES` — maximum number of frames to extract per uploaded video (default: `20`).
+- `VIDEO_FRAME_WIDTH` — optional width to scale frames to before upload (default: `640`, set to `0` to keep the original resolution).
