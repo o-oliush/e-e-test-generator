@@ -31,25 +31,80 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const openai = new OpenAI({ apiKey: 'api_key' });
-const defaultModel = 'gpt-5';
+const openaiApiKey = process.env.OPENAI_API_KEY;
+const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
+const defaultModel = process.env.OPENAI_MODEL || 'gpt-5';
 
-async function callOpenAI({ systemPrompt, userPrompt }) {
+function ensureOpenAI() {
   if (!openai) {
     return {
-      content: 'OpenAI API key not configured. Set OPENAI_API_KEY to enable AI responses.'
+      content:
+        'OpenAI API key not configured. Set OPENAI_API_KEY to enable AI responses.'
     };
   }
+  return null;
+}
 
-  const completion = await openai.chat.completions.create({
+function buildOutputText(response) {
+  if (!response) return '';
+  if (typeof response.output_text === 'string') {
+    return response.output_text;
+  }
+
+  const segments = [];
+  if (Array.isArray(response.output)) {
+    for (const item of response.output) {
+      if (!item?.content) continue;
+      for (const part of item.content) {
+        if (typeof part.text === 'string') {
+          segments.push(part.text);
+        }
+      }
+    }
+  }
+  return segments.join('\n');
+}
+
+async function uploadVideoToOpenAI({ filePath, displayName }) {
+  if (!openai) return null;
+  const stream = fs.createReadStream(filePath);
+  return openai.files.create({
+    file: stream,
+    purpose: 'assistants',
+    filename: displayName
+  });
+}
+
+async function callOpenAI({ systemPrompt, userPrompt, videoAttachments = [] }) {
+  const missingClient = ensureOpenAI();
+  if (missingClient) {
+    return missingClient;
+  }
+
+  const modalities = ['text'];
+  if (videoAttachments.length > 0 && !modalities.includes('video')) {
+    modalities.push('video');
+  }
+
+  const response = await openai.responses.create({
     model: defaultModel,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
+    modalities,
+    input: [
+      {
+        role: 'system',
+        content: [{ type: 'text', text: systemPrompt }]
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: userPrompt },
+          ...videoAttachments
+        ]
+      }
     ]
   });
 
-  return completion.choices[0]?.message ?? { content: '' };
+  return { content: buildOutputText(response) };
 }
 
 function extractTitleAndPreview(content) {
@@ -66,7 +121,9 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 
   res.json({
     fileId: req.file.filename,
-    originalName: req.file.originalname
+    originalName: req.file.originalname,
+    mimeType: req.file.mimetype,
+    size: req.file.size
   });
 });
 
@@ -107,21 +164,41 @@ app.post('/api/message', async (req, res) => {
 
   try {
     let promptWithFiles = message;
+    const videoAttachments = [];
 
     for (const file of files) {
       if (!file?.fileId) continue;
       const filePath = path.join(uploadsDir, path.basename(file.fileId));
       if (!fs.existsSync(filePath)) continue;
+      const label = file.originalName || file.fileId;
+      const isVideo = (file.mimeType || '').startsWith('video/');
+
+      if (isVideo) {
+        const uploaded = await uploadVideoToOpenAI({
+          filePath,
+          displayName: label
+        });
+
+        if (uploaded?.id) {
+          videoAttachments.push({
+            type: 'input_video',
+            video: { file_id: uploaded.id }
+          });
+          promptWithFiles += `\n\nAttached video (${label}) uploaded as ${uploaded.id}.`;
+          continue;
+        }
+      }
+
       const fileBuffer = await fs.promises.readFile(filePath);
       const base64 = fileBuffer.toString('base64');
-      const label = file.originalName || file.fileId;
       promptWithFiles += `\n\nAttached file (${label}) base64:\n${base64}`;
     }
 
     const systemPrompt = 'You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. Include clear titles and step-by-step instructions.';
     const aiMessage = await callOpenAI({
       systemPrompt,
-      userPrompt: promptWithFiles
+      userPrompt: promptWithFiles,
+      videoAttachments
     });
 
     const aiContent = aiMessage.content || '';
