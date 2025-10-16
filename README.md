@@ -6,8 +6,10 @@ This project demonstrates a lightweight full-stack workflow for generating and r
 
 - 📁 Upload contextual video or supporting files that will be forwarded to the AI when requesting new prompts.
 - 💬 Send free-form instructions to OpenAI's API to generate detailed Markdown test plans.
-- 🗂️ Persist AI-generated prompts as Markdown files within the local `tests/` directory and list them in the UI.
+- 🗂️ Persist AI-generated prompts as Markdown files within the local `tests/` directory and explore them on the dedicated Stored Test Prompts page.
 - ▶️ Run any stored test prompt by resending it to the AI for simulated execution or verification.
+- 📊 Review pass/fail status, confidence, and execution logs directly from the Stored Test Prompts page with inline analyzer summaries.
+- 🕓 Inspect a persisted execution history for every test, stored under `test-results/` so you can revisit previous attempts.
 
 ## Getting Started
 
@@ -26,6 +28,7 @@ This project demonstrates a lightweight full-stack workflow for generating and r
    npm start
    ```
 4. Open `http://localhost:3000` in your browser and interact with the interface.
+   - Use the navigation bar to jump between the generator and the Stored Test Prompts page (or visit `/tests.html`) to review saved prompts, expand their Markdown, and run them.
 
 ## Project Structure
 
@@ -34,6 +37,7 @@ public/        # Static frontend assets (HTML, CSS, JS)
 server.js      # Express server exposing upload, message, and test APIs
 tests/         # Markdown files representing stored test prompts
 uploads/       # Temporary storage for uploaded files (gitignored)
+test-results/  # JSONL files capturing run history per test prompt
 ```
 
 ## Notes

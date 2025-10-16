@@ -15,14 +15,17 @@ const __dirname = path.dirname(__filename);
 // Import video analysis functions
 import { extractFrames, askAboutFrames } from './video-help.js';
 
+// Import test result analyzer
+import TestResultAnalyzer from './testResultAnalyzer.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 const testsDir = path.join(__dirname, 'tests');
 const uploadsDir = path.join(__dirname, 'uploads');
+const resultsDir = path.join(__dirname, 'test-results');
 
-for (const dir of [testsDir, uploadsDir]) {
+for (const dir of [testsDir, uploadsDir, resultsDir]) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -48,7 +51,7 @@ const defaultModel = 'gpt-5';
 const openai = new OpenAI({ apiKey: openAIapiKey });
 
 // Initialize test result analyzer
-//const testAnalyzer = new TestResultAnalyzer(openAIapiKey, defaultModel);
+const testAnalyzer = new TestResultAnalyzer(openAIapiKey, defaultModel);
 
 async function callOpenAI({ systemPrompt, userPrompt }) {
   if (!openai) {
@@ -76,6 +79,42 @@ function extractTitleAndPreview(content) {
   return { title, preview };
 }
 
+async function appendTestHistory(fileId, entry) {
+  const safeFile = path.basename(fileId);
+  const historyPath = path.join(resultsDir, `${safeFile}.jsonl`);
+  const serialized = JSON.stringify(entry) + '\n';
+  await fs.promises.appendFile(historyPath, serialized, 'utf8');
+}
+
+async function readTestHistory(fileId, limit = 20) {
+  const safeFile = path.basename(fileId);
+  const historyPath = path.join(resultsDir, `${safeFile}.jsonl`);
+
+  try {
+    const data = await fs.promises.readFile(historyPath, 'utf8');
+    const lines = data.split('\n').filter(Boolean);
+    const entries = lines.map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch (error) {
+        console.warn(`Failed to parse history line for ${safeFile}:`, error.message);
+        return null;
+      }
+    }).filter(Boolean);
+
+    if (!limit || limit <= 0) {
+      return entries;
+    }
+
+    return entries.slice(-limit).reverse();
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+}
+
 app.post('/api/upload', upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded.' });
@@ -97,10 +136,15 @@ app.get('/api/tests', async (_req, res) => {
           const fullPath = path.join(testsDir, file);
           const content = await fs.promises.readFile(fullPath, 'utf8');
           const { title, preview } = extractTitleAndPreview(content);
+          const firstLine = (content
+            .split(/\r?\n/)
+            .find((line) => line.trim().length > 0) || '')
+            .trim();
           return {
             fileId: file,
             title,
             preview,
+            firstLine,
             updatedAt: (await fs.promises.stat(fullPath)).mtime
           };
         })
@@ -112,6 +156,27 @@ app.get('/api/tests', async (_req, res) => {
   } catch (error) {
     console.error('Failed to load tests', error);
     res.status(500).json({ error: 'Failed to load tests.' });
+  }
+});
+
+app.get('/api/tests/:fileId', async (req, res) => {
+  const safeFile = path.basename(req.params.fileId);
+  const testPath = path.join(testsDir, safeFile);
+
+  try {
+    const content = await fs.promises.readFile(testPath, 'utf8');
+    const { title } = extractTitleAndPreview(content);
+    res.json({
+      fileId: safeFile,
+      title,
+      content
+    });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: 'Test file not found.' });
+    }
+    console.error('Failed to load test content', error);
+    res.status(500).json({ error: 'Failed to load test content.' });
   }
 });
 
@@ -134,16 +199,16 @@ app.post('/api/message', async (req, res) => {
     const frameCount = 100; // should be calculated based on video length
     let aiContent = '';
     try {
-      console.log("🎬 Extracting frames...");
+      console.log("Extracting frames...");
       const frames = await extractFrames(videoPath, outputDir, frameCount);
-      console.log(`✅ Extracted ${frames.length} frames.`);
+      console.log(`Extracted ${frames.length} frames.`);
 
       // Inline askAboutFrames implementation
       try {
         const systemPrompt = `You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. 
         Include clear titles and step-by-step instructions. 
         Expected result of the test: ` + message;
-        console.log(`🧠 Analyzing ${frames.length} frames with OpenAI...`);        
+        console.log(`Analyzing ${frames.length} frames with OpenAI...`);        
         // Prepare image inputs for OpenAI vision API
         const imageInputs = frames.map((filePath) => ({
           type: "image_url",
@@ -169,30 +234,30 @@ app.post('/api/message', async (req, res) => {
         });
 
         const result = response.choices[0].message.content || '';
-        console.log("🧠 Model output:");
+        console.log("Model output:");
         console.log(result);
         aiContent = result;
         
         // Clean up extracted frames after analysis
-        console.log("🧹 Cleaning up extracted frames...");
+        console.log("Cleaning up extracted frames...");
         for (const framePath of frames) {
           try {
             if (fs.existsSync(framePath)) {
               fs.unlinkSync(framePath);
             }
           } catch (cleanupError) {
-            console.warn(`⚠️ Could not delete frame ${framePath}:`, cleanupError.message);
+            console.warn(`Could not delete frame ${framePath}:`, cleanupError.message);
           }
         }
-        console.log(`✅ Cleaned up ${frames.length} frame files`);
-        
+        console.log(`Cleaned up ${frames.length} frame files`);
+
       } catch (analysisError) {
-        console.error('❌ Error in video analysis:', analysisError);
+        console.error('Error in video analysis:', analysisError);
         throw new Error(`OpenAI analysis failed: ${analysisError.message}`);
       }
       
     } catch (err) {
-      console.error("❌ Error:", err);
+      console.error("Error:", err);
       // Continue with text-only processing if video fails
     }
     
@@ -232,6 +297,24 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
     // Analyze the test result to determine success/failure
     const analysis = await testAnalyzer.analyzeTestResult(aiContent);
 
+    const historyEntry = {
+      timestamp: new Date().toISOString(),
+      testFile: safeFile,
+      analysis: {
+        success: analysis.success,
+        confidence: analysis.confidence,
+        reason: analysis.reason,
+        method: analysis.method
+      },
+      result: aiContent
+    };
+
+    try {
+      await appendTestHistory(safeFile, historyEntry);
+    } catch (historyError) {
+      console.error('Failed to store test history', historyError);
+    }
+
     res.json({
       result: aiContent,
       test: {
@@ -242,7 +325,8 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
         confidence: analysis.confidence,
         reason: analysis.reason,
         method: analysis.method
-      }
+      },
+      historyEntry
     });
   } catch (error) {
     if (error.code === 'ENOENT') {
@@ -250,6 +334,23 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
     }
     console.error('Failed to run test', error);
     res.status(500).json({ error: 'Failed to run test.' });
+  }
+});
+
+app.get('/api/tests/:fileId/history', async (req, res) => {
+  const safeFile = path.basename(req.params.fileId);
+  const { limit } = req.query;
+
+  try {
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : 20;
+    const history = await readTestHistory(safeFile, Number.isNaN(parsedLimit) ? 20 : parsedLimit);
+    res.json({
+      fileId: safeFile,
+      entries: history
+    });
+  } catch (error) {
+    console.error('Failed to load test history', error);
+    res.status(500).json({ error: 'Failed to load test history.' });
   }
 });
 

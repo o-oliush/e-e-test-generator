@@ -3,9 +3,7 @@ const uploadedFilesContainer = document.getElementById('uploaded-files');
 const messageForm = document.getElementById('message-form');
 const urlInput = document.getElementById('url-input');
 const messageInput = document.getElementById('message-input');
-const testsList = document.getElementById('tests-list');
 const activityLog = document.getElementById('activity-log');
-const testTemplate = document.getElementById('test-item-template');
 
 const uploadedFiles = [];
 
@@ -82,68 +80,9 @@ async function handleFileSelection(event) {
   fileInput.value = '';
 }
 
-function createTestElement(test) {
-  const fragment = testTemplate.content.cloneNode(true);
-  const container = fragment.querySelector('.test-item');
-  const title = fragment.querySelector('.test-title');
-  const preview = fragment.querySelector('.test-preview');
-  const button = fragment.querySelector('.run-button');
-
-  title.textContent = test.title;
-  preview.textContent = test.preview || 'No preview available.';
-  button.addEventListener('click', () => runTest(test));
-
-  return container;
-}
-
-function renderTests(tests) {
-  testsList.innerHTML = '';
-  if (!tests || tests.length === 0) {
-    const empty = document.createElement('p');
-    empty.textContent = 'No tests stored yet. Generate one to get started!';
-    testsList.appendChild(empty);
-    return;
-  }
-
-  tests.forEach((test) => {
-    testsList.appendChild(createTestElement(test));
-  });
-}
-
-async function fetchTests() {
-  try {
-    const response = await fetch('/api/tests');
-    if (!response.ok) {
-      throw new Error(`Fetch failed with status ${response.status}`);
-    }
-    const tests = await response.json();
-    renderTests(tests);
-  } catch (error) {
-    console.error('Failed to load tests', error);
-    addLogEntry('Failed to load tests', error.message, 'error');
-  }
-}
-
-async function runTest(test) {
-  addLogEntry('Running test', test.title || test.fileId);
-  try {
-    const response = await fetch(`/api/tests/${encodeURIComponent(test.fileId)}/run`, {
-      method: 'POST'
-    });
-    if (!response.ok) {
-      throw new Error(`Run failed with status ${response.status}`);
-    }
-    const data = await response.json();
-    addLogEntry(`Result for ${test.title || test.fileId}`, data.result || 'No response received.');
-  } catch (error) {
-    console.error('Failed to run test', error);
-    addLogEntry('Failed to run test', error.message, 'error');
-  }
-}
-
 async function submitMessage(event) {
   event.preventDefault();
-  const url = urlInput.value.trim();
+  const url = 'https://www.bestlaptop.deals/';//urlInput.value.trim(); - should be fixed!!!!!
   const text = messageInput.value.trim();
   if (!url) {
     addLogEntry('URL required', 'Please enter a website URL before sending.', 'error');
@@ -175,8 +114,8 @@ async function submitMessage(event) {
     addLogEntry('AI Response', data.response || 'No response content.');
 
     if (data.savedTest) {
-      addLogEntry('Test saved', `${data.savedTest.title} added to the library.`, 'success');
-      prependTest(data.savedTest);
+      const label = data.savedTest.title || data.savedTest.fileId;
+      addLogEntry('Test saved', `${label} added to the stored prompts library.`, 'success');
     }
 
     messageInput.value = '';
@@ -188,19 +127,7 @@ async function submitMessage(event) {
   }
 }
 
-function prependTest(test) {
-  const existing = testsList.querySelectorAll('.test-item');
-  const element = createTestElement(test);
-  if (existing.length === 0) {
-    testsList.innerHTML = '';
-    testsList.appendChild(element);
-  } else {
-    testsList.prepend(element);
-  }
-}
-
 fileInput.addEventListener('change', handleFileSelection);
 messageForm.addEventListener('submit', submitMessage);
 
 renderUploadedFiles();
-fetchTests();
