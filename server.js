@@ -65,15 +65,41 @@ function buildOutputText(response) {
   return segments.join('\n');
 }
 
-async function uploadVideoToOpenAI({ filePath }) {
+async function uploadVideoToOpenAI({ filePath, mimeType }) {
   if (!openai) return null;
-  const stream = fs.createReadStream(filePath);
-  return openai.files.create({
-    file: stream,
-    // Vision uploads support larger binary assets (including .mp4) that can be
-    // referenced later from the Responses API as `vision` tool attachments.
-    purpose: 'vision'
-  });
+
+  const stats = await fs.promises.stat(filePath);
+  const filename = path.basename(filePath);
+  const effectiveMime = mimeType || 'video/mp4';
+
+  let uploadSession = null;
+  try {
+    uploadSession = await openai.uploads.create({
+      purpose: 'vision',
+      filename,
+      bytes: stats.size,
+      mime_type: effectiveMime
+    });
+
+    const part = await openai.uploads.parts.create(uploadSession.id, {
+      data: fs.createReadStream(filePath)
+    });
+
+    const completed = await openai.uploads.complete(uploadSession.id, {
+      part_ids: [part.id]
+    });
+
+    return completed?.file ?? null;
+  } catch (error) {
+    if (uploadSession?.id) {
+      try {
+        await openai.uploads.cancel(uploadSession.id);
+      } catch (cancelError) {
+        console.error('Failed to cancel OpenAI upload session', cancelError);
+      }
+    }
+    throw error;
+  }
 }
 
 async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
@@ -185,12 +211,20 @@ app.post('/api/message', async (req, res) => {
       const isVideo = (file.mimeType || '').startsWith('video/');
 
       if (isVideo) {
-        const uploaded = await uploadVideoToOpenAI({ filePath });
+        try {
+          const uploaded = await uploadVideoToOpenAI({
+            filePath,
+            mimeType: file.mimeType
+          });
 
-        if (uploaded?.id) {
-          videos.push({ id: uploaded.id, label });
-          promptWithFiles += `\n\nAttached video (${label}) uploaded as ${uploaded.id}.`;
-          continue;
+          if (uploaded?.id) {
+            videos.push({ id: uploaded.id, label });
+            promptWithFiles += `\n\nAttached video (${label}) uploaded as ${uploaded.id}.`;
+            continue;
+          }
+        } catch (error) {
+          console.error('Failed to upload video to OpenAI', error);
+          promptWithFiles += `\n\nVideo (${label}) could not be uploaded to OpenAI. Falling back to base64 encoding.`;
         }
       }
 
