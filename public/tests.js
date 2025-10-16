@@ -1,20 +1,177 @@
 const testsList = document.getElementById('tests-list');
 const testTemplate = document.getElementById('test-item-template');
 
-function setStatus(container, message, variant = 'info') {
-  const statusElement = container.querySelector('.test-status');
-  if (!statusElement) return;
+function getFeedbackElements(container) {
+  return {
+    wrapper: container.querySelector('.test-feedback'),
+    status: container.querySelector('.test-status'),
+    chip: container.querySelector('.status-chip'),
+    summary: container.querySelector('.status-summary'),
+    meta: container.querySelector('.status-meta'),
+    toggle: container.querySelector('.result-toggle'),
+    result: container.querySelector('.test-result')
+  };
+}
 
-  if (!message) {
-    statusElement.hidden = true;
-    statusElement.textContent = '';
-    statusElement.className = 'test-status';
-    return;
+function resetFeedback(container) {
+  const { wrapper, chip, summary, meta, toggle, result } = getFeedbackElements(container);
+  if (!wrapper) return;
+
+  wrapper.hidden = true;
+
+  if (chip) {
+    chip.textContent = '';
+    chip.className = 'status-chip';
   }
 
-  statusElement.hidden = false;
-  statusElement.textContent = message;
-  statusElement.className = `test-status status-${variant}`;
+  if (summary) {
+    summary.textContent = '';
+  }
+
+  if (meta) {
+    meta.textContent = '';
+    meta.hidden = true;
+  }
+
+  if (toggle) {
+    toggle.hidden = true;
+    toggle.textContent = 'View execution log';
+    toggle.setAttribute('aria-expanded', 'false');
+  }
+
+  if (result) {
+    result.hidden = true;
+    result.innerHTML = '';
+  }
+}
+
+function toggleResultVisibility(toggleButton, resultElement) {
+  if (!toggleButton || !resultElement) return;
+
+  const shouldShow = resultElement.hidden;
+  resultElement.hidden = !shouldShow;
+  toggleButton.textContent = shouldShow ? 'Hide execution log' : 'View execution log';
+  toggleButton.setAttribute('aria-expanded', String(shouldShow));
+
+  if (shouldShow) {
+    resultElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function getAnalysisMeta(analysis = {}, methodLabel) {
+  const parts = [];
+  if (typeof analysis.confidence === 'number') {
+    const confidencePercent = Math.round(Math.max(0, Math.min(1, analysis.confidence)) * 100);
+    parts.push(`Confidence: ${confidencePercent}%`);
+  }
+  if (methodLabel) {
+    parts.push(methodLabel);
+  }
+  return parts.join(' • ');
+}
+
+function formatAnalysisMethod(method) {
+  if (!method || typeof method !== 'string') return null;
+  if (method === 'ai-enhanced') {
+    return 'Analysis: AI-assisted';
+  }
+  const cleaned = method.replace(/-/g, ' ').trim();
+  if (!cleaned) {
+    return null;
+  }
+  const capitalized = cleaned.replace(/\b\w/g, (char) => char.toUpperCase());
+  const normalized = capitalized
+    .replace(/\bAi\b/g, 'AI')
+    .replace(/\bLlms?\b/gi, 'LLM');
+  return `Analysis: ${normalized}`;
+}
+
+function updateFeedback(container, { state, analysis, rawResult, message }) {
+  const elements = getFeedbackElements(container);
+  if (!elements.wrapper || !elements.status) return;
+
+  const { wrapper, chip, summary, meta, toggle, result } = elements;
+
+  wrapper.hidden = false;
+
+  let chipLabel = '';
+  let chipClass = 'status-chip';
+  let summaryText = '';
+  let metaText = '';
+
+  const method = formatAnalysisMethod(analysis?.method);
+  const trimmedReason = typeof analysis?.reason === 'string' ? analysis.reason.trim() : '';
+
+  switch (state) {
+    case 'loading':
+      chipLabel = 'RUNNING';
+      chipClass += ' status-loading';
+      summaryText = 'Running test...';
+      metaText = 'This may take a few seconds.';
+      break;
+    case 'success':
+      chipLabel = 'PASS';
+      chipClass += ' status-success';
+      summaryText = trimmedReason || 'Test passed successfully.';
+      metaText = getAnalysisMeta(analysis, method);
+      break;
+    case 'failure':
+      chipLabel = 'FAIL';
+      chipClass += ' status-failure';
+      summaryText = trimmedReason || 'Test failed. Review the execution log for details.';
+      metaText = getAnalysisMeta(analysis, method);
+      break;
+    case 'unknown':
+      chipLabel = 'UNKNOWN';
+      chipClass += ' status-unknown';
+      summaryText = trimmedReason || message || 'Result could not be determined. Review the execution log for more context.';
+      metaText = getAnalysisMeta(analysis, method);
+      break;
+    case 'error':
+      chipLabel = 'ERROR';
+      chipClass += ' status-error';
+      summaryText = message || 'Failed to run the test. Please try again.';
+      metaText = 'Check your connection or try again later.';
+      break;
+    default:
+      wrapper.hidden = true;
+      return;
+  }
+
+  if (chip) {
+    chip.textContent = chipLabel;
+    chip.className = chipClass;
+  }
+
+  if (summary) {
+    summary.textContent = summaryText;
+  }
+
+  if (meta) {
+    if (metaText) {
+      meta.hidden = false;
+      meta.textContent = metaText;
+    } else {
+      meta.hidden = true;
+      meta.textContent = '';
+    }
+  }
+
+  if (toggle && result) {
+    if (rawResult && rawResult.trim().length > 0) {
+      result.innerHTML = renderMarkdown(rawResult);
+      result.hidden = true;
+      toggle.hidden = false;
+      toggle.textContent = 'View execution log';
+      toggle.setAttribute('aria-expanded', 'false');
+    } else {
+      toggle.hidden = true;
+      toggle.textContent = 'View execution log';
+      toggle.setAttribute('aria-expanded', 'false');
+      result.hidden = true;
+      result.innerHTML = '';
+    }
+  }
 }
 
 function renderMarkdown(markdown) {
@@ -121,24 +278,47 @@ async function toggleTestContent(test, contentElement, toggleButton) {
 }
 
 async function runTest(test, container) {
-  setStatus(container, 'Running test...', 'info');
+  resetFeedback(container);
+  updateFeedback(container, { state: 'loading' });
+
   const runButton = container.querySelector('.run-button');
   if (runButton) {
     runButton.disabled = true;
   }
+
   try {
     const response = await fetch(`/api/tests/${encodeURIComponent(test.fileId)}/run`, {
       method: 'POST'
     });
+
     if (!response.ok) {
       throw new Error(`Run failed with status ${response.status}`);
     }
+
     const data = await response.json();
-    const message = (data.result && data.result.trim()) || 'No response received.';
-    setStatus(container, message, 'success');
+    const analysis = data?.analysis;
+    const resultText = typeof data?.result === 'string' ? data.result : '';
+
+    if (analysis && typeof analysis.success === 'boolean') {
+      updateFeedback(container, {
+        state: analysis.success ? 'success' : 'failure',
+        analysis,
+        rawResult: resultText
+      });
+    } else {
+      updateFeedback(container, {
+        state: 'unknown',
+        analysis,
+        rawResult: resultText,
+        message: 'No structured analysis was returned.'
+      });
+    }
   } catch (error) {
     console.error('Failed to run test', error);
-    setStatus(container, `Failed to run test: ${error.message}`, 'error');
+    updateFeedback(container, {
+      state: 'error',
+      message: `Failed to run test: ${error.message}`
+    });
   } finally {
     if (runButton) {
       runButton.disabled = false;
@@ -187,18 +367,66 @@ function createTestElement(test) {
     header.appendChild(toggleButton);
     header.appendChild(toolbar);
 
-  const statusElement = document.createElement('p');
-  statusElement.className = 'test-status';
-  statusElement.hidden = true;
-  statusElement.setAttribute('aria-live', 'polite');
+    const feedback = document.createElement('div');
+    feedback.className = 'test-feedback';
+    feedback.hidden = true;
+
+    const statusContainer = document.createElement('div');
+    statusContainer.className = 'test-status';
+    statusContainer.setAttribute('aria-live', 'polite');
+
+    const statusChip = document.createElement('span');
+    statusChip.className = 'status-chip';
+    statusChip.setAttribute('aria-hidden', 'true');
+
+    const statusText = document.createElement('div');
+    statusText.className = 'status-text';
+
+    const summaryParagraph = document.createElement('p');
+    summaryParagraph.className = 'status-summary';
+
+    const metaParagraph = document.createElement('p');
+    metaParagraph.className = 'status-meta';
+    metaParagraph.hidden = true;
+
+    statusText.appendChild(summaryParagraph);
+    statusText.appendChild(metaParagraph);
+
+    statusContainer.appendChild(statusChip);
+    statusContainer.appendChild(statusText);
+
+    const resultToggle = document.createElement('button');
+    resultToggle.className = 'result-toggle';
+    resultToggle.type = 'button';
+    resultToggle.hidden = true;
+    resultToggle.textContent = 'View execution log';
+    resultToggle.setAttribute('aria-expanded', 'false');
+
+    const resultContainer = document.createElement('div');
+    resultContainer.className = 'test-result markdown-content';
+    resultContainer.hidden = true;
+
+    feedback.appendChild(statusContainer);
+    feedback.appendChild(resultToggle);
+    feedback.appendChild(resultContainer);
 
     contentElement = document.createElement('div');
     contentElement.className = 'test-content markdown-content';
     contentElement.hidden = true;
 
     container.appendChild(header);
-    container.appendChild(statusElement);
+    container.appendChild(feedback);
     container.appendChild(contentElement);
+  }
+
+  const resultToggleButton = container.querySelector('.result-toggle');
+  const resultContentElement = container.querySelector('.test-result');
+
+  if (resultToggleButton && resultContentElement) {
+    resultToggleButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleResultVisibility(resultToggleButton, resultContentElement);
+    });
   }
 
   const rawHeading = (test.firstLine || test.title || test.fileId || '').trim() || test.fileId;
@@ -209,6 +437,16 @@ function createTestElement(test) {
 
   const uniqueId = `test-content-${test.fileId.replace(/[^a-zA-Z0-9_-]/g, '-')}-${Math.random().toString(36).slice(2, 8)}`;
   contentElement.id = uniqueId;
+  if (resultContentElement) {
+    const resultId = `${uniqueId}-result`;
+    resultContentElement.id = resultId;
+    if (resultToggleButton) {
+      resultToggleButton.setAttribute('aria-controls', resultId);
+    }
+  }
+  if (resultToggleButton && !resultToggleButton.getAttribute('aria-controls')) {
+    resultToggleButton.setAttribute('aria-controls', `${uniqueId}-result`);
+  }
   toggleButton.setAttribute('aria-controls', uniqueId);
   toggleButton.setAttribute('aria-expanded', 'false');
   toggleButton.setAttribute('title', 'Click to expand or collapse this test prompt');
@@ -221,7 +459,7 @@ function createTestElement(test) {
     runTest(test, container);
   });
 
-  setStatus(container, '', 'info');
+  resetFeedback(container);
 
   return container;
 }

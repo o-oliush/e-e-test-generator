@@ -33,7 +33,17 @@
             <button class="run-button" type="button">Run</button>
           </div>
         </div>
-        <p class="test-status" aria-live="polite" hidden></p>
+        <div class="test-feedback" hidden>
+          <div class="test-status" aria-live="polite">
+            <span class="status-chip" aria-hidden="true"></span>
+            <div class="status-text">
+              <p class="status-summary"></p>
+              <p class="status-meta"></p>
+            </div>
+          </div>
+          <button class="result-toggle" type="button" hidden aria-expanded="false">View execution log</button>
+          <div class="test-result markdown-content" hidden></div>
+        </div>
         <div class="test-content markdown-content" hidden></div>
       </article>
     </template>

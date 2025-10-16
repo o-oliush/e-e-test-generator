@@ -8,6 +8,7 @@ This project demonstrates a lightweight full-stack workflow for generating and r
 - 💬 Send free-form instructions to OpenAI's API to generate detailed Markdown test plans.
 - 🗂️ Persist AI-generated prompts as Markdown files within the local `tests/` directory and explore them on the dedicated Stored Test Prompts page.
 - ▶️ Run any stored test prompt by resending it to the AI for simulated execution or verification.
+- 📊 Review pass/fail status, confidence, and execution logs directly from the Stored Test Prompts page with inline analyzer summaries.
 
 ## Getting Started
 
