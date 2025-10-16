@@ -24,7 +24,7 @@ A minimal full-stack project that serves a lightweight chat interface connected 
      notepad .env  # replace the placeholder with your real key
      ```
 
-     If `Copy-Item` is unavailable, you can create the file manually with the contents from `.env.example`. The server automatically loads `.env` when it starts.
+     If `Copy-Item` is unavailable, you can create the file manually with the contents from `.env.example`. Make sure the `.env` file lives in the project root (next to `package.json`) so the server can load it automatically when it starts.
 
    - **Exporting an environment variable:**
 

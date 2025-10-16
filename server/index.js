@@ -5,7 +5,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -20,8 +23,6 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 app.use(cors());
 app.use(express.json());
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, '..', 'public');
 
 app.use(express.static(publicDir));
