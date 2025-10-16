@@ -6,8 +6,8 @@ This project demonstrates a lightweight full-stack workflow for generating and r
 
 - 📁 Upload contextual video or supporting files that will be forwarded to the AI when requesting new prompts. Video uploads are
   streamed to OpenAI's Files API with the `vision` purpose so large assets (including `.mp4`) can be analyzed without inlining them
-  in requests. The Responses API references the uploaded files as `vision` tool attachments, allowing GPT-5 to fetch the media
-  directly instead of requiring conversion to image frames.
+  in requests. The Responses API now embeds the uploaded IDs directly in `input_video` content blocks, allowing GPT-5 to fetch the
+  media without attempting to coerce the files into static image formats.
 - 💬 Send free-form instructions to OpenAI's API to generate detailed Markdown test plans.
 - 🗂️ Persist AI-generated prompts as Markdown files within the local `tests/` directory and list them in the UI.
 - ▶️ Run any stored test prompt by resending it to the AI for simulated execution or verification.
@@ -43,4 +43,4 @@ uploads/       # Temporary storage for uploaded files (gitignored)
 
 - AI interactions require valid OpenAI credentials. When the API key is missing, the server responds with an explanatory message and still stores the generated files.
 - Uploaded files are encoded to base64 and appended to the user prompt when calling the AI, ensuring the model can reference them without additional hosting infrastructure.
-- Uploaded videos are instead streamed directly to OpenAI's file storage and attached to the `responses.create` call as `vision` tool references, allowing the assistant to analyze large media assets without inflating request payload sizes.
+- Uploaded videos are instead streamed directly to OpenAI's file storage and added to the `responses.create` payload as `input_video` content parts, allowing the assistant to analyze large media assets without inflating request payload sizes or triggering image-only validation.

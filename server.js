@@ -76,21 +76,24 @@ async function uploadVideoToOpenAI({ filePath }) {
   });
 }
 
-async function callOpenAI({ systemPrompt, userPrompt, videoFileIds = [] }) {
+async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
   const missingClient = ensureOpenAI();
   if (missingClient) {
     return missingClient;
   }
 
   const modalities = ['text'];
-  const attachments = [];
+  const userContent = [{ type: 'input_text', text: userPrompt }];
 
-  if (Array.isArray(videoFileIds) && videoFileIds.length > 0) {
-    for (const fileId of videoFileIds) {
-      if (!fileId) continue;
-      attachments.push({ file_id: fileId, tools: [{ type: 'vision' }] });
+  if (Array.isArray(videos) && videos.length > 0) {
+    for (const video of videos) {
+      if (!video?.id) continue;
+      userContent.push({
+        type: 'input_video',
+        video: { file_id: video.id }
+      });
     }
-    if (attachments.length > 0 && !modalities.includes('video')) {
+    if (!modalities.includes('video')) {
       modalities.push('video');
     }
   }
@@ -102,13 +105,9 @@ async function callOpenAI({ systemPrompt, userPrompt, videoFileIds = [] }) {
     },
     {
       role: 'user',
-      content: [{ type: 'input_text', text: userPrompt }]
+      content: userContent
     }
   ];
-
-  if (attachments.length > 0) {
-    input[input.length - 1].attachments = attachments;
-  }
 
   const response = await openai.responses.create({
     model: defaultModel,
@@ -176,7 +175,7 @@ app.post('/api/message', async (req, res) => {
 
   try {
     let promptWithFiles = message;
-    const videoFileIds = [];
+    const videos = [];
 
     for (const file of files) {
       if (!file?.fileId) continue;
@@ -189,7 +188,7 @@ app.post('/api/message', async (req, res) => {
         const uploaded = await uploadVideoToOpenAI({ filePath });
 
         if (uploaded?.id) {
-          videoFileIds.push(uploaded.id);
+          videos.push({ id: uploaded.id, label });
           promptWithFiles += `\n\nAttached video (${label}) uploaded as ${uploaded.id}.`;
           continue;
         }
@@ -204,7 +203,7 @@ app.post('/api/message', async (req, res) => {
     const aiMessage = await callOpenAI({
       systemPrompt,
       userPrompt: promptWithFiles,
-      videoFileIds
+      videos
     });
 
     const aiContent = aiMessage.content || '';
