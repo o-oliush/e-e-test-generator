@@ -60,7 +60,9 @@ async function uploadFile(file) {
     const data = await response.json();
     uploadedFiles.push({
       fileId: data.fileId,
-      originalName: file.name
+      originalName: file.name,
+      mimeType: data.mimeType,
+      size: data.size
     });
     renderUploadedFiles();
     addLogEntry('File uploaded', `${file.name} is ready to use.`, 'success');

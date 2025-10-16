@@ -31,25 +31,134 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const openai = new OpenAI({ apiKey: 'api_key' });
-const defaultModel = 'gpt-5';
+const openaiApiKey = process.env.OPENAI_API_KEY;
+const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
+const defaultModel = process.env.OPENAI_MODEL || 'gpt-5';
 
-async function callOpenAI({ systemPrompt, userPrompt }) {
+function ensureOpenAI() {
   if (!openai) {
     return {
-      content: 'OpenAI API key not configured. Set OPENAI_API_KEY to enable AI responses.'
+      content:
+        'OpenAI API key not configured. Set OPENAI_API_KEY to enable AI responses.'
     };
   }
+  return null;
+}
 
-  const completion = await openai.chat.completions.create({
+function buildOutputText(response) {
+  if (!response) return '';
+  if (typeof response.output_text === 'string') {
+    return response.output_text;
+  }
+
+  const segments = [];
+  if (Array.isArray(response.output)) {
+    for (const item of response.output) {
+      if (!item?.content) continue;
+      for (const part of item.content) {
+        if (typeof part.text === 'string') {
+          segments.push(part.text);
+        }
+      }
+    }
+  }
+  return segments.join('\n');
+}
+
+async function uploadVideoToOpenAI({ filePath, mimeType }) {
+  if (!openai) return null;
+
+  const stats = await fs.promises.stat(filePath);
+  const filename = path.basename(filePath);
+  const effectiveMime = mimeType || 'video/mp4';
+
+  const streamFactory = () => fs.createReadStream(filePath);
+
+  let uploadSession = null;
+  try {
+    uploadSession = await openai.uploads.create({
+      purpose: 'vision',
+      filename,
+      bytes: stats.size,
+      mime_type: effectiveMime
+    });
+
+    const part = await openai.uploads.parts.create(uploadSession.id, {
+      data: streamFactory()
+    });
+
+    const completed = await openai.uploads.complete(uploadSession.id, {
+      part_ids: [part.id]
+    });
+
+    if (completed?.file?.id) {
+      return completed.file;
+    }
+  } catch (primaryError) {
+    if (uploadSession?.id) {
+      try {
+        await openai.uploads.cancel(uploadSession.id);
+      } catch (cancelError) {
+        console.error('Failed to cancel OpenAI upload session', cancelError);
+      }
+    }
+
+    try {
+      const file = await openai.files.create({
+        purpose: 'vision',
+        file: streamFactory()
+      });
+      if (file?.id) {
+        return file;
+      }
+    } catch (fallbackError) {
+      console.error('OpenAI Files API fallback failed', fallbackError);
+      const aggregateError = new Error('Failed to upload media via OpenAI Uploads or Files APIs.');
+      aggregateError.cause = { primaryError, fallbackError };
+      throw aggregateError;
+    }
+
+    throw new Error('OpenAI upload session completed without a resulting file.');
+  }
+
+  return null;
+}
+
+async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
+  const missingClient = ensureOpenAI();
+  if (missingClient) {
+    return missingClient;
+  }
+
+  const userContent = [{ type: 'input_text', text: userPrompt }];
+
+  if (Array.isArray(videos) && videos.length > 0) {
+    for (const video of videos) {
+      if (!video?.id) continue;
+      userContent.push({
+        type: 'input_video',
+        video: { file_id: video.id }
+      });
+    }
+  }
+
+  const input = [
+    {
+      role: 'system',
+      content: [{ type: 'input_text', text: systemPrompt }]
+    },
+    {
+      role: 'user',
+      content: userContent
+    }
+  ];
+
+  const response = await openai.responses.create({
     model: defaultModel,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ]
+    input
   });
 
-  return completion.choices[0]?.message ?? { content: '' };
+  return { content: buildOutputText(response) };
 }
 
 function extractTitleAndPreview(content) {
@@ -66,7 +175,9 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 
   res.json({
     fileId: req.file.filename,
-    originalName: req.file.originalname
+    originalName: req.file.originalname,
+    mimeType: req.file.mimetype,
+    size: req.file.size
   });
 });
 
@@ -107,21 +218,49 @@ app.post('/api/message', async (req, res) => {
 
   try {
     let promptWithFiles = message;
+    const videos = [];
 
     for (const file of files) {
       if (!file?.fileId) continue;
       const filePath = path.join(uploadsDir, path.basename(file.fileId));
       if (!fs.existsSync(filePath)) continue;
+      const label = file.originalName || file.fileId;
+      const isVideo = (file.mimeType || '').startsWith('video/');
+
+      if (isVideo) {
+        try {
+          const uploaded = await uploadVideoToOpenAI({
+            filePath,
+            mimeType: file.mimeType
+          });
+
+          if (uploaded?.id) {
+            videos.push({ id: uploaded.id, label });
+            promptWithFiles += `\n\nAttached video (${label}) uploaded as ${uploaded.id}.`;
+            continue;
+          }
+        } catch (error) {
+          console.error('Failed to upload video to OpenAI', error);
+          promptWithFiles += `\n\nVideo (${label}) could not be uploaded to OpenAI. Please try again later or provide a compressed summary instead.`;
+        }
+
+        continue;
+      }
+
       const fileBuffer = await fs.promises.readFile(filePath);
       const base64 = fileBuffer.toString('base64');
-      const label = file.originalName || file.fileId;
+      if (base64.length > 200000) {
+        promptWithFiles += `\n\nFile (${label}) is too large to inline safely. Please reduce its size or provide a summary instead of the raw contents.`;
+        continue;
+      }
       promptWithFiles += `\n\nAttached file (${label}) base64:\n${base64}`;
     }
 
     const systemPrompt = 'You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. Include clear titles and step-by-step instructions.';
     const aiMessage = await callOpenAI({
       systemPrompt,
-      userPrompt: promptWithFiles
+      userPrompt: promptWithFiles,
+      videos
     });
 
     const aiContent = aiMessage.content || '';
