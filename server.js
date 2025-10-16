@@ -34,18 +34,41 @@ const upload = multer({ storage });
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 const defaultModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
-async function callOpenAI({ systemPrompt, userPrompt }) {
+async function callOpenAI({ systemPrompt, userPrompt, files }) {
   if (!openai) {
     return {
       content: 'OpenAI API key not configured. Set OPENAI_API_KEY to enable AI responses.'
     };
   }
 
-  const completion = await openai.chat.completions.create({
+  const content = [{
+    type: 'input_text',
+    text: userPrompt
+  }]
+
+  if (files != null) {
+    const mappedFiles = await Promise.all(files.map(async (filePath) => {
+      console.log("📤 Uploading file...");
+      const file = await openai.files.create({
+        file: fs.createReadStream(filePath),
+        purpose: "user_data", // allows model to access the file
+      });
+      console.log("✅ Uploaded:", file.id);
+      return file.id;
+    }))
+    mappedFiles.forEach((file_id) => {
+      content.push({
+        type: 'input_file',
+        file_id
+      })
+    })
+  }
+
+  const completion = await openai.responses.create({
     model: defaultModel,
-    messages: [
+    input: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
+      { role: 'user', content }
     ]
   });
 
@@ -106,16 +129,18 @@ app.post('/api/message', async (req, res) => {
   }
 
   try {
-    const fileContent = [];
+    const queryFiles = [];
 
     for (const file of files) {
       if (!file?.fileId) continue;
       const filePath = path.join(uploadsDir, path.basename(file.fileId));
       if (!fs.existsSync(filePath)) continue;
-      const fileBuffer = await fs.promises.readFile(filePath);
-      const base64 = fileBuffer.toString('base64');
-      const label = file.originalName || file.fileId;
-      fileContent.push(`* ${label} base64:\n${base64}`);
+      queryFiles.push(filePath);
+      // const fileBuffer = await fs.promises.readFile(filePath);
+      // queryFiles.push({
+      //   filename: file.originalName || file.fileId,
+      //   file_data: `data:video/mp4;base64,${fileBuffer.toString('base64')}`
+      // });
     }
 
     const aiMessage = await callOpenAI({
@@ -123,7 +148,7 @@ app.post('/api/message', async (req, res) => {
 You are an experienced software developer with common sense.
 The goal is to write a high-quality prompt for an end-to-end test (using natural language and Markdown format) that reproduces my interactions and verifies the final expected result.
 
-${fileContent.length ? `
+${files.length ? `
 Watch the attached video carefully and extract a complete, detailed, step-by-step description of all actions I perform on the website.
 
 Analyze the video frame by frame and list every visible user action:
@@ -157,12 +182,8 @@ ${message ? `
 Test steps instructions:
 ${message}
 ` : ''}
-
-${fileContent.length ? `
-Video files:
-${fileContent.join('\n\n')}
-` : ''}
-      `.trim()
+      `.trim(),
+      files: queryFiles
     });
 
     const aiContent = aiMessage.content || '';
