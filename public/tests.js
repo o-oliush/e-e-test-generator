@@ -1,23 +1,20 @@
 const testsList = document.getElementById('tests-list');
-const activityLog = document.getElementById('tests-activity-log');
 const testTemplate = document.getElementById('test-item-template');
 
-function addLogEntry(title, body, variant = 'info') {
-  if (!activityLog) return;
-  const entry = document.createElement('div');
-  entry.className = `log-entry log-${variant}`;
+function setStatus(container, message, variant = 'info') {
+  const statusElement = container.querySelector('.test-status');
+  if (!statusElement) return;
 
-  const heading = document.createElement('h4');
-  heading.textContent = title;
-  entry.appendChild(heading);
-
-  if (body) {
-    const paragraph = document.createElement('p');
-    paragraph.textContent = body;
-    entry.appendChild(paragraph);
+  if (!message) {
+    statusElement.hidden = true;
+    statusElement.textContent = '';
+    statusElement.className = 'test-status';
+    return;
   }
 
-  activityLog.prepend(entry);
+  statusElement.hidden = false;
+  statusElement.textContent = message;
+  statusElement.className = `test-status status-${variant}`;
 }
 
 function renderMarkdown(markdown) {
@@ -123,8 +120,12 @@ async function toggleTestContent(test, contentElement, toggleButton) {
   }
 }
 
-async function runTest(test) {
-  addLogEntry('Running test', test.headingLabel || test.fileId);
+async function runTest(test, container) {
+  setStatus(container, 'Running test...', 'info');
+  const runButton = container.querySelector('.run-button');
+  if (runButton) {
+    runButton.disabled = true;
+  }
   try {
     const response = await fetch(`/api/tests/${encodeURIComponent(test.fileId)}/run`, {
       method: 'POST'
@@ -133,10 +134,15 @@ async function runTest(test) {
       throw new Error(`Run failed with status ${response.status}`);
     }
     const data = await response.json();
-    addLogEntry(`Result for ${test.headingLabel || test.fileId}`, data.result || 'No response received.', 'success');
+    const message = (data.result && data.result.trim()) || 'No response received.';
+    setStatus(container, message, 'success');
   } catch (error) {
     console.error('Failed to run test', error);
-    addLogEntry('Failed to run test', error.message, 'error');
+    setStatus(container, `Failed to run test: ${error.message}`, 'error');
+  } finally {
+    if (runButton) {
+      runButton.disabled = false;
+    }
   }
 }
 
@@ -181,11 +187,17 @@ function createTestElement(test) {
     header.appendChild(toggleButton);
     header.appendChild(toolbar);
 
+  const statusElement = document.createElement('p');
+  statusElement.className = 'test-status';
+  statusElement.hidden = true;
+  statusElement.setAttribute('aria-live', 'polite');
+
     contentElement = document.createElement('div');
     contentElement.className = 'test-content markdown-content';
     contentElement.hidden = true;
 
     container.appendChild(header);
+    container.appendChild(statusElement);
     container.appendChild(contentElement);
   }
 
@@ -206,8 +218,10 @@ function createTestElement(test) {
   toggleButton.addEventListener('click', () => toggleTestContent(test, contentElement, toggleButton));
   runButton.addEventListener('click', (event) => {
     event.stopPropagation();
-    runTest(test);
+    runTest(test, container);
   });
+
+  setStatus(container, '', 'info');
 
   return container;
 }
@@ -252,7 +266,6 @@ async function loadTests() {
       errorParagraph.textContent = `Failed to load stored prompts: ${error.message}`;
       testsList.appendChild(errorParagraph);
     }
-    addLogEntry('Failed to load stored prompts', error.message, 'error');
   }
 }
 

@@ -217,6 +217,35 @@ button:disabled {
   margin-top: 0;
 }
 
+.test-status {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: rgba(15, 23, 42, 0.45);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #cbd5f5;
+  white-space: pre-wrap;
+}
+
+.status-info {
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #cbd5f5;
+}
+
+.status-success {
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(22, 163, 74, 0.18);
+  color: #bbf7d0;
+}
+
+.status-error {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+}
+
 .test-content {
   flex-basis: 100%;
   margin-top: 0.75rem;
@@ -357,6 +386,16 @@ button:disabled {
 @media (max-width: 720px) {
   body {
     padding: 0 1rem 2rem;
+  }
+
+  .primary-nav {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .primary-nav .nav-link {
+    width: 100%;
   }
 
   .run-button {
