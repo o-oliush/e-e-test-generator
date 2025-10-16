@@ -71,38 +71,49 @@ async function uploadVideoToOpenAI({ filePath }) {
   return openai.files.create({
     file: stream,
     // Vision uploads support larger binary assets (including .mp4) that can be
-    // referenced later from the Responses API as `input_video` attachments.
+    // referenced later from the Responses API as `vision` tool attachments.
     purpose: 'vision'
   });
 }
 
-async function callOpenAI({ systemPrompt, userPrompt, videoAttachments = [] }) {
+async function callOpenAI({ systemPrompt, userPrompt, videoFileIds = [] }) {
   const missingClient = ensureOpenAI();
   if (missingClient) {
     return missingClient;
   }
 
   const modalities = ['text'];
-  if (videoAttachments.length > 0 && !modalities.includes('video')) {
-    modalities.push('video');
+  const attachments = [];
+
+  if (Array.isArray(videoFileIds) && videoFileIds.length > 0) {
+    for (const fileId of videoFileIds) {
+      if (!fileId) continue;
+      attachments.push({ file_id: fileId, tools: [{ type: 'vision' }] });
+    }
+    if (attachments.length > 0 && !modalities.includes('video')) {
+      modalities.push('video');
+    }
+  }
+
+  const input = [
+    {
+      role: 'system',
+      content: [{ type: 'input_text', text: systemPrompt }]
+    },
+    {
+      role: 'user',
+      content: [{ type: 'input_text', text: userPrompt }]
+    }
+  ];
+
+  if (attachments.length > 0) {
+    input[input.length - 1].attachments = attachments;
   }
 
   const response = await openai.responses.create({
     model: defaultModel,
     modalities,
-    input: [
-      {
-        role: 'system',
-        content: [{ type: 'text', text: systemPrompt }]
-      },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: userPrompt },
-          ...videoAttachments
-        ]
-      }
-    ]
+    input
   });
 
   return { content: buildOutputText(response) };
@@ -165,7 +176,7 @@ app.post('/api/message', async (req, res) => {
 
   try {
     let promptWithFiles = message;
-    const videoAttachments = [];
+    const videoFileIds = [];
 
     for (const file of files) {
       if (!file?.fileId) continue;
@@ -178,10 +189,7 @@ app.post('/api/message', async (req, res) => {
         const uploaded = await uploadVideoToOpenAI({ filePath });
 
         if (uploaded?.id) {
-          videoAttachments.push({
-            type: 'input_video',
-            video: { file_id: uploaded.id }
-          });
+          videoFileIds.push(uploaded.id);
           promptWithFiles += `\n\nAttached video (${label}) uploaded as ${uploaded.id}.`;
           continue;
         }
@@ -196,7 +204,7 @@ app.post('/api/message', async (req, res) => {
     const aiMessage = await callOpenAI({
       systemPrompt,
       userPrompt: promptWithFiles,
-      videoAttachments
+      videoFileIds
     });
 
     const aiContent = aiMessage.content || '';
