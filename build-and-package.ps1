@@ -11,11 +11,26 @@ Push-Location "dotnet-wrapper"
 dotnet publish -c Release -o "../deployment-package" --verbosity quiet
 Pop-Location
 
-# Copy Node files
-Copy-Item "server.js" -Destination "deployment-package" -Force
-Copy-Item "package.json" -Destination "deployment-package" -Force
-Copy-Item "public" -Destination "deployment-package" -Recurse -Force
-Copy-Item "web.config" -Destination "deployment-package" -Force
+# Copy Node.js application files
+Write-Host "Copying Node.js application files..." -ForegroundColor Yellow
+
+# Copy all .js files (server.js, testResultAnalyzer.js, etc.)
+Get-ChildItem -Path "." -Filter "*.js" -File | ForEach-Object {
+    Copy-Item $_.FullName -Destination "deployment-package" -Force
+    Write-Host "  Copied: $($_.Name)" -ForegroundColor Gray
+}
+
+# Copy package.json
+Copy-Item "package.json" -Destination "deployment-package" -Force -ErrorAction SilentlyContinue
+
+# Copy web.config
+Copy-Item "web.config" -Destination "deployment-package" -Force -ErrorAction SilentlyContinue
+
+# Copy public directory
+if (Test-Path "public") {
+    Copy-Item "public" -Destination "deployment-package" -Recurse -Force
+    Write-Host "  Copied: public/" -ForegroundColor Gray
+}
 
 # Create required directories
 New-Item -Path "deployment-package/tests" -ItemType Directory -Force | Out-Null
