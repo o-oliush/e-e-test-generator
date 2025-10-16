@@ -5,7 +5,8 @@ This project demonstrates a lightweight full-stack workflow for generating and r
 ## Features
 
 - 📁 Upload contextual video or supporting files that will be forwarded to the AI when requesting new prompts. Video uploads are
-  streamed to OpenAI's Files API so large assets can be analyzed without inlining them in requests.
+  streamed to OpenAI's Files API with the `vision` purpose so large assets (including `.mp4`) can be analyzed without inlining them
+  in requests.
 - 💬 Send free-form instructions to OpenAI's API to generate detailed Markdown test plans.
 - 🗂️ Persist AI-generated prompts as Markdown files within the local `tests/` directory and list them in the UI.
 - ▶️ Run any stored test prompt by resending it to the AI for simulated execution or verification.

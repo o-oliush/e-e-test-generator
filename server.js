@@ -70,7 +70,9 @@ async function uploadVideoToOpenAI({ filePath }) {
   const stream = fs.createReadStream(filePath);
   return openai.files.create({
     file: stream,
-    purpose: 'assistants'
+    // Vision uploads support larger binary assets (including .mp4) that can be
+    // referenced later from the Responses API as `input_video` attachments.
+    purpose: 'vision'
   });
 }
 
