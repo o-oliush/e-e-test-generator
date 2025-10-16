@@ -65,13 +65,12 @@ function buildOutputText(response) {
   return segments.join('\n');
 }
 
-async function uploadVideoToOpenAI({ filePath, displayName }) {
+async function uploadVideoToOpenAI({ filePath }) {
   if (!openai) return null;
   const stream = fs.createReadStream(filePath);
   return openai.files.create({
     file: stream,
-    purpose: 'assistants',
-    filename: displayName
+    purpose: 'assistants'
   });
 }
 
@@ -174,10 +173,7 @@ app.post('/api/message', async (req, res) => {
       const isVideo = (file.mimeType || '').startsWith('video/');
 
       if (isVideo) {
-        const uploaded = await uploadVideoToOpenAI({
-          filePath,
-          displayName: label
-        });
+        const uploaded = await uploadVideoToOpenAI({ filePath });
 
         if (uploaded?.id) {
           videoAttachments.push({
