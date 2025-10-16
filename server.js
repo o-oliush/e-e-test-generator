@@ -31,8 +31,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
-const defaultModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const openai = new OpenAI({ apiKey: 'api_key' });
+const defaultModel = 'gpt-5';
 
 async function callOpenAI({ systemPrompt, userPrompt }) {
   if (!openai) {
