@@ -5,8 +5,9 @@ This project demonstrates a lightweight full-stack workflow for generating and r
 ## Features
 
 - 📁 Upload contextual video or supporting files that will be forwarded to the AI when requesting new prompts. Video uploads are
-  staged through OpenAI's multipart Uploads API with the `vision` purpose so large assets (including `.mp4`) are accepted, then the
-  resulting file IDs are embedded directly in `input_video` content blocks for GPT-5 to fetch on demand.
+  staged through OpenAI's multipart Uploads API with the `user_data` purpose (falling back to the legacy Files API) so large assets,
+  including `.mp4`, are accepted, then the resulting file IDs are embedded directly in `input_file` content blocks for GPT-5 to
+  fetch on demand.
 - 💬 Send free-form instructions to OpenAI's API to generate detailed Markdown test plans.
 - 🗂️ Persist AI-generated prompts as Markdown files within the local `tests/` directory and list them in the UI.
 - ▶️ Run any stored test prompt by resending it to the AI for simulated execution or verification.
@@ -41,5 +42,5 @@ uploads/       # Temporary storage for uploaded files (gitignored)
 ## Notes
 
 - AI interactions require valid OpenAI credentials. When the API key is missing, the server responds with an explanatory message and still stores the generated files.
-- Uploaded files are encoded to base64 and appended to the user prompt when calling the AI, ensuring the model can reference them without additional hosting infrastructure.
-- Uploaded videos are staged with the Uploads API before being attached as `input_video` content parts, so large media assets remain compatible with GPT-5's vision workflow without tripping image-only validation rules.
+- Uploaded files are encoded to base64 and appended to the user prompt when calling the AI, ensuring the model can reference them without additional hosting infrastructure. Oversized attachments are skipped to avoid excessive token consumption.
+- Uploaded videos are staged with the Uploads API (falling back to the Files API when necessary) before being attached as `input_file` content parts, keeping large media assets compatible with GPT-5 without tripping image-only validation rules or token limits.

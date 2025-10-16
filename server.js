@@ -72,25 +72,29 @@ async function uploadVideoToOpenAI({ filePath, mimeType }) {
   const filename = path.basename(filePath);
   const effectiveMime = mimeType || 'video/mp4';
 
+  const streamFactory = () => fs.createReadStream(filePath);
+
   let uploadSession = null;
   try {
     uploadSession = await openai.uploads.create({
-      purpose: 'vision',
+      purpose: 'user_data',
       filename,
       bytes: stats.size,
       mime_type: effectiveMime
     });
 
     const part = await openai.uploads.parts.create(uploadSession.id, {
-      data: fs.createReadStream(filePath)
+      data: streamFactory()
     });
 
     const completed = await openai.uploads.complete(uploadSession.id, {
       part_ids: [part.id]
     });
 
-    return completed?.file ?? null;
-  } catch (error) {
+    if (completed?.file?.id) {
+      return completed.file;
+    }
+  } catch (primaryError) {
     if (uploadSession?.id) {
       try {
         await openai.uploads.cancel(uploadSession.id);
@@ -98,8 +102,26 @@ async function uploadVideoToOpenAI({ filePath, mimeType }) {
         console.error('Failed to cancel OpenAI upload session', cancelError);
       }
     }
-    throw error;
+
+    try {
+      const file = await openai.files.create({
+        purpose: 'user_data',
+        file: streamFactory()
+      });
+      if (file?.id) {
+        return file;
+      }
+    } catch (fallbackError) {
+      console.error('OpenAI Files API fallback failed', fallbackError);
+      const aggregateError = new Error('Failed to upload media via OpenAI Uploads or Files APIs.');
+      aggregateError.cause = { primaryError, fallbackError };
+      throw aggregateError;
+    }
+
+    throw new Error('OpenAI upload session completed without a resulting file.');
   }
+
+  return null;
 }
 
 async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
@@ -114,8 +136,9 @@ async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
     for (const video of videos) {
       if (!video?.id) continue;
       userContent.push({
-        type: 'input_video',
-        video: { file_id: video.id }
+        type: 'input_file',
+        file_id: video.id,
+        filename: video.label
       });
     }
   }
@@ -219,12 +242,18 @@ app.post('/api/message', async (req, res) => {
           }
         } catch (error) {
           console.error('Failed to upload video to OpenAI', error);
-          promptWithFiles += `\n\nVideo (${label}) could not be uploaded to OpenAI. Falling back to base64 encoding.`;
+          promptWithFiles += `\n\nVideo (${label}) could not be uploaded to OpenAI. Please try again later or provide a compressed summary instead.`;
         }
+
+        continue;
       }
 
       const fileBuffer = await fs.promises.readFile(filePath);
       const base64 = fileBuffer.toString('base64');
+      if (base64.length > 200000) {
+        promptWithFiles += `\n\nFile (${label}) is too large to inline safely. Please reduce its size or provide a summary instead of the raw contents.`;
+        continue;
+      }
       promptWithFiles += `\n\nAttached file (${label}) base64:\n${base64}`;
     }
 
