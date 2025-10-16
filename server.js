@@ -108,7 +108,6 @@ async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
     return missingClient;
   }
 
-  const modalities = ['text'];
   const userContent = [{ type: 'input_text', text: userPrompt }];
 
   if (Array.isArray(videos) && videos.length > 0) {
@@ -118,9 +117,6 @@ async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
         type: 'input_video',
         video: { file_id: video.id }
       });
-    }
-    if (!modalities.includes('video')) {
-      modalities.push('video');
     }
   }
 
@@ -137,7 +133,6 @@ async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
 
   const response = await openai.responses.create({
     model: defaultModel,
-    modalities,
     input
   });
 
