@@ -9,12 +9,16 @@ function getFeedbackElements(container) {
     summary: container.querySelector('.status-summary'),
     meta: container.querySelector('.status-meta'),
     toggle: container.querySelector('.result-toggle'),
-    result: container.querySelector('.test-result')
+    result: container.querySelector('.test-result'),
+    historyToggle: container.querySelector('.history-toggle'),
+    historyPanel: container.querySelector('.history-panel'),
+    historyList: container.querySelector('.history-list'),
+    historyEmpty: container.querySelector('.history-empty')
   };
 }
 
-function resetFeedback(container) {
-  const { wrapper, chip, summary, meta, toggle, result } = getFeedbackElements(container);
+function resetFeedback(container, { preserveHistory = false, showPlaceholder = true } = {}) {
+  const { wrapper, chip, summary, meta, toggle, result, historyToggle, historyPanel, historyList, historyEmpty } = getFeedbackElements(container);
   if (!wrapper) return;
 
   wrapper.hidden = true;
@@ -22,6 +26,7 @@ function resetFeedback(container) {
   if (chip) {
     chip.textContent = '';
     chip.className = 'status-chip';
+    chip.hidden = true;
   }
 
   if (summary) {
@@ -42,6 +47,44 @@ function resetFeedback(container) {
   if (result) {
     result.hidden = true;
     result.innerHTML = '';
+  }
+
+  if (historyToggle) {
+    if (preserveHistory) {
+      historyToggle.hidden = false;
+      historyToggle.disabled = false;
+      const isExpanded = historyToggle.getAttribute('aria-expanded') === 'true';
+      if (isExpanded) {
+        historyToggle.textContent = 'Hide run history';
+      } else {
+        historyToggle.textContent = historyToggle.dataset.showLabel || historyToggle.textContent || 'Show run history';
+      }
+    } else {
+      historyToggle.hidden = true;
+      historyToggle.disabled = false;
+      historyToggle.textContent = historyToggle.dataset.showLabel || 'Show run history';
+      historyToggle.setAttribute('aria-expanded', 'false');
+      delete historyToggle.dataset.loaded;
+    }
+  }
+
+  if (historyPanel) {
+    if (!preserveHistory) {
+      historyPanel.hidden = true;
+    }
+  }
+
+  if (!preserveHistory) {
+    if (historyList) {
+      historyList.innerHTML = '';
+    }
+    if (historyEmpty) {
+      historyEmpty.hidden = true;
+    }
+  }
+
+  if (showPlaceholder) {
+    showNoRunState(container);
   }
 }
 
@@ -84,6 +127,280 @@ function formatAnalysisMethod(method) {
     .replace(/\bAi\b/g, 'AI')
     .replace(/\bLlms?\b/gi, 'LLM');
   return `Analysis: ${normalized}`;
+}
+
+function formatTimestamp(timestamp) {
+  if (!timestamp) return 'Unknown time';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return timestamp;
+  }
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function describeOutcome(analysis = {}) {
+  if (analysis.success === true) return 'Pass';
+  if (analysis.success === false) return 'Fail';
+  return 'Unknown';
+}
+
+function outcomeClass(analysis = {}) {
+  if (analysis.success === true) return 'history-item-success';
+  if (analysis.success === false) return 'history-item-failure';
+  return 'history-item-unknown';
+}
+
+function buildHistoryMeta(analysis = {}) {
+  const parts = [];
+  if (typeof analysis.confidence === 'number') {
+    const confidencePercent = Math.round(Math.max(0, Math.min(1, analysis.confidence)) * 100);
+    parts.push(`Confidence: ${confidencePercent}%`);
+  }
+  const methodLabel = formatAnalysisMethod(analysis.method);
+  if (methodLabel) {
+    parts.push(methodLabel);
+  }
+  return parts.join(' • ');
+}
+
+function getHistoryToggleLabel(entries) {
+  const count = Array.isArray(entries) ? entries.length : 0;
+  return count > 0 ? `Show run history (${count})` : 'Show run history';
+}
+
+function renderHistoryList(entries, listElement, emptyElement) {
+  if (!listElement) return;
+  listElement.innerHTML = '';
+
+  if (!entries || entries.length === 0) {
+    if (emptyElement) {
+      emptyElement.hidden = false;
+      emptyElement.textContent = 'No previous runs yet.';
+    }
+    return;
+  }
+
+  if (emptyElement) {
+    emptyElement.hidden = true;
+  }
+
+  entries.forEach((entry) => {
+    const item = document.createElement('li');
+    item.className = `history-item ${outcomeClass(entry.analysis)}`;
+
+    const header = document.createElement('div');
+    header.className = 'history-item-header';
+
+    const badge = document.createElement('span');
+    badge.className = 'history-item-status';
+    badge.textContent = describeOutcome(entry.analysis);
+
+    const time = document.createElement('time');
+    time.className = 'history-item-time';
+    if (entry.timestamp) {
+      time.dateTime = entry.timestamp;
+    }
+    time.textContent = formatTimestamp(entry.timestamp);
+
+    header.appendChild(badge);
+    header.appendChild(time);
+
+    item.appendChild(header);
+
+    const trimmedReason = entry.analysis?.reason ? entry.analysis.reason.trim() : '';
+    if (trimmedReason) {
+      const reasonParagraph = document.createElement('p');
+      reasonParagraph.className = 'history-item-reason';
+      reasonParagraph.textContent = trimmedReason;
+      item.appendChild(reasonParagraph);
+    }
+
+    const metaText = buildHistoryMeta(entry.analysis);
+    if (metaText) {
+      const metaParagraph = document.createElement('p');
+      metaParagraph.className = 'history-item-meta';
+      metaParagraph.textContent = metaText;
+      item.appendChild(metaParagraph);
+    }
+
+    listElement.appendChild(item);
+  });
+}
+
+function setHistoryPanelVisibility(container, open) {
+  const { historyToggle, historyPanel } = getFeedbackElements(container);
+  if (!historyToggle || !historyPanel) return;
+  historyPanel.hidden = !open;
+  historyToggle.setAttribute('aria-expanded', String(open));
+  const showLabel = historyToggle.dataset.showLabel || 'Show run history';
+  historyToggle.textContent = open ? 'Hide run history' : showLabel;
+}
+
+function showNoRunState(container) {
+  const { wrapper, chip, summary, meta } = getFeedbackElements(container);
+  if (!wrapper) return;
+
+  wrapper.hidden = false;
+
+  if (chip) {
+    chip.hidden = true;
+    chip.textContent = '';
+    chip.className = 'status-chip';
+  }
+
+  if (summary) {
+    summary.textContent = 'No runs yet. Click "Run" to capture the first result.';
+  }
+
+  if (meta) {
+    meta.hidden = false;
+    meta.textContent = 'History, logs, and status will appear here after the first execution.';
+  }
+}
+
+async function fetchTestHistory(fileId, { signal, limit = 20 } = {}) {
+  const params = limit ? `?limit=${encodeURIComponent(limit)}` : '';
+  const response = await fetch(`/api/tests/${encodeURIComponent(fileId)}/history${params}`, { signal });
+  if (!response.ok) {
+    throw new Error(`Fetch failed with status ${response.status}`);
+  }
+  const data = await response.json();
+  return Array.isArray(data.entries) ? data.entries : [];
+}
+
+async function ensureHistoryLoaded(test, container, { force = false, limit = 25 } = {}) {
+  if (!force && Array.isArray(test.historyEntries)) {
+    updateHistoryUI(container, test.historyEntries);
+    return test.historyEntries;
+  }
+
+  if (!force && test.historyPromise) {
+    const entries = await test.historyPromise;
+    updateHistoryUI(container, entries);
+    return entries;
+  }
+
+  const { historyToggle, historyEmpty } = getFeedbackElements(container);
+
+  if (historyEmpty) {
+    historyEmpty.hidden = true;
+  }
+
+  if (historyToggle) {
+    historyToggle.disabled = true;
+    historyToggle.textContent = 'Loading history...';
+  }
+
+  const loadPromise = (async () => {
+    const entries = await fetchTestHistory(test.fileId, { limit });
+    return entries;
+  })();
+
+  test.historyPromise = loadPromise;
+
+  try {
+    const entries = await loadPromise;
+    test.historyEntries = entries;
+    test.historyLoaded = true;
+    updateHistoryUI(container, entries);
+    if (historyEmpty && (!entries || entries.length === 0)) {
+      historyEmpty.hidden = false;
+      historyEmpty.textContent = 'No previous runs yet.';
+    }
+    return entries;
+  } catch (error) {
+    console.error('Failed to load test history', error);
+    if (historyEmpty) {
+      historyEmpty.hidden = false;
+      historyEmpty.textContent = `Failed to load history: ${error.message}`;
+    }
+    if (historyToggle) {
+      historyToggle.hidden = false;
+      historyToggle.disabled = false;
+      historyToggle.dataset.showLabel = historyToggle.dataset.showLabel || 'Show run history';
+      historyToggle.textContent = historyToggle.dataset.showLabel;
+      delete historyToggle.dataset.loaded;
+    }
+    return [];
+  } finally {
+    if (test.historyPromise === loadPromise) {
+      delete test.historyPromise;
+    }
+  }
+}
+
+function applyLatestHistorySnapshot(test, container, entry) {
+  if (container.dataset.running === 'true') return;
+
+  const latestEntry = entry || (Array.isArray(test.historyEntries) ? test.historyEntries[0] : null);
+  if (!latestEntry) {
+    showNoRunState(container);
+    return;
+  }
+
+  const analysis = latestEntry.analysis || {};
+  let state = 'unknown';
+  if (typeof analysis.success === 'boolean') {
+    state = analysis.success ? 'success' : 'failure';
+  }
+
+  const message = typeof analysis.reason === 'string' ? analysis.reason : undefined;
+
+  updateFeedback(container, {
+    state,
+    analysis,
+    rawResult: typeof latestEntry.result === 'string' ? latestEntry.result : '',
+    message
+  });
+}
+
+function hydrateHistoryPreview(test, container) {
+  if (test.historyHydrationRequested) return;
+  test.historyHydrationRequested = true;
+
+  setTimeout(() => {
+    ensureHistoryLoaded(test, container)
+      .then((entries) => {
+        applyLatestHistorySnapshot(test, container, entries && entries.length > 0 ? entries[0] : null);
+      })
+      .catch((error) => {
+        console.error('Failed to hydrate history preview', error);
+      });
+  }, 0);
+}
+
+function updateHistoryUI(container, entries) {
+  const { historyToggle, historyList, historyEmpty } = getFeedbackElements(container);
+  if (!historyToggle || !historyList) return;
+
+  const { historyPanel } = getFeedbackElements(container);
+  const wasOpen = historyPanel ? historyPanel.hidden === false || historyToggle.getAttribute('aria-expanded') === 'true' : false;
+
+  renderHistoryList(entries, historyList, historyEmpty);
+  const label = getHistoryToggleLabel(entries);
+  historyToggle.dataset.showLabel = label;
+  historyToggle.hidden = false;
+  historyToggle.disabled = false;
+  if (wasOpen) {
+    historyToggle.textContent = 'Hide run history';
+    historyToggle.setAttribute('aria-expanded', 'true');
+    if (historyPanel) {
+      historyPanel.hidden = false;
+    }
+  } else {
+    historyToggle.textContent = label;
+    historyToggle.setAttribute('aria-expanded', 'false');
+    if (historyPanel) {
+      historyPanel.hidden = true;
+    }
+  }
+  historyToggle.dataset.loaded = 'true';
 }
 
 function updateFeedback(container, { state, analysis, rawResult, message }) {
@@ -139,6 +456,7 @@ function updateFeedback(container, { state, analysis, rawResult, message }) {
   }
 
   if (chip) {
+    chip.hidden = false;
     chip.textContent = chipLabel;
     chip.className = chipClass;
   }
@@ -278,7 +596,8 @@ async function toggleTestContent(test, contentElement, toggleButton) {
 }
 
 async function runTest(test, container) {
-  resetFeedback(container);
+  resetFeedback(container, { preserveHistory: true, showPlaceholder: false });
+  container.dataset.running = 'true';
   updateFeedback(container, { state: 'loading' });
 
   const runButton = container.querySelector('.run-button');
@@ -313,6 +632,27 @@ async function runTest(test, container) {
         message: 'No structured analysis was returned.'
       });
     }
+
+    if (test.historyLoaded) {
+      const entry = data.historyEntry;
+      if (entry) {
+        test.historyEntries = [entry, ...(test.historyEntries || [])];
+      }
+      updateHistoryUI(container, test.historyEntries || []);
+      if ((test.historyEntries || []).length > 0) {
+        setHistoryPanelVisibility(container, true);
+      }
+    } else {
+      const entries = await ensureHistoryLoaded(test, container, { force: true });
+      if (data.historyEntry && entries.length > 0 && data.historyEntry.timestamp !== entries[0]?.timestamp) {
+        entries.unshift(data.historyEntry);
+        test.historyEntries = entries;
+      }
+      updateHistoryUI(container, test.historyEntries || entries || []);
+      if ((test.historyEntries || entries || []).length > 0) {
+        setHistoryPanelVisibility(container, true);
+      }
+    }
   } catch (error) {
     console.error('Failed to run test', error);
     updateFeedback(container, {
@@ -323,6 +663,7 @@ async function runTest(test, container) {
     if (runButton) {
       runButton.disabled = false;
     }
+    delete container.dataset.running;
   }
 }
 
@@ -421,12 +762,39 @@ function createTestElement(test) {
 
   const resultToggleButton = container.querySelector('.result-toggle');
   const resultContentElement = container.querySelector('.test-result');
+  const historyToggle = container.querySelector('.history-toggle');
+  const historyPanel = container.querySelector('.history-panel');
+  const historyList = container.querySelector('.history-list');
+  const historyEmpty = container.querySelector('.history-empty');
 
   if (resultToggleButton && resultContentElement) {
     resultToggleButton.addEventListener('click', (event) => {
       event.stopPropagation();
       toggleResultVisibility(resultToggleButton, resultContentElement);
     });
+  }
+  if (historyToggle && historyPanel) {
+    historyToggle.addEventListener('click', async (event) => {
+      event.stopPropagation();
+
+      if (!historyToggle.dataset.loaded) {
+        await ensureHistoryLoaded(test, container, { force: true });
+      }
+
+      const isOpen = historyPanel.hidden === false;
+      setHistoryPanelVisibility(container, !isOpen);
+      if (!isOpen) {
+        historyPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+  }
+
+  if (historyPanel && historyList) {
+    const historyId = `test-history-${test.fileId.replace(/[^a-zA-Z0-9_-]/g, '-')}-${Math.random().toString(36).slice(2, 6)}`;
+    historyPanel.id = historyId;
+    if (historyToggle && !historyToggle.getAttribute('aria-controls')) {
+      historyToggle.setAttribute('aria-controls', historyId);
+    }
   }
 
   const rawHeading = (test.firstLine || test.title || test.fileId || '').trim() || test.fileId;
@@ -460,6 +828,24 @@ function createTestElement(test) {
   });
 
   resetFeedback(container);
+  if (historyToggle) {
+    historyToggle.hidden = false;
+    historyToggle.disabled = false;
+    const initialLabel = historyToggle.dataset.showLabel || 'Show run history';
+    historyToggle.textContent = initialLabel;
+    historyToggle.setAttribute('aria-expanded', 'false');
+  }
+  if (historyPanel) {
+    historyPanel.hidden = true;
+  }
+  if (historyList) {
+    historyList.innerHTML = '';
+  }
+  if (historyEmpty) {
+    historyEmpty.hidden = true;
+  }
+
+  hydrateHistoryPreview(test, container);
 
   return container;
 }

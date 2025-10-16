@@ -9,6 +9,7 @@ This project demonstrates a lightweight full-stack workflow for generating and r
 - 🗂️ Persist AI-generated prompts as Markdown files within the local `tests/` directory and explore them on the dedicated Stored Test Prompts page.
 - ▶️ Run any stored test prompt by resending it to the AI for simulated execution or verification.
 - 📊 Review pass/fail status, confidence, and execution logs directly from the Stored Test Prompts page with inline analyzer summaries.
+- 🕓 Inspect a persisted execution history for every test, stored under `test-results/` so you can revisit previous attempts.
 
 ## Getting Started
 
@@ -36,6 +37,7 @@ public/        # Static frontend assets (HTML, CSS, JS)
 server.js      # Express server exposing upload, message, and test APIs
 tests/         # Markdown files representing stored test prompts
 uploads/       # Temporary storage for uploaded files (gitignored)
+test-results/  # JSONL files capturing run history per test prompt
 ```
 
 ## Notes
