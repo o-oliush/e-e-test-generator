@@ -77,7 +77,7 @@ async function uploadVideoToOpenAI({ filePath, mimeType }) {
   let uploadSession = null;
   try {
     uploadSession = await openai.uploads.create({
-      purpose: 'user_data',
+      purpose: 'vision',
       filename,
       bytes: stats.size,
       mime_type: effectiveMime
@@ -105,7 +105,7 @@ async function uploadVideoToOpenAI({ filePath, mimeType }) {
 
     try {
       const file = await openai.files.create({
-        purpose: 'user_data',
+        purpose: 'vision',
         file: streamFactory()
       });
       if (file?.id) {
@@ -136,9 +136,8 @@ async function callOpenAI({ systemPrompt, userPrompt, videos = [] }) {
     for (const video of videos) {
       if (!video?.id) continue;
       userContent.push({
-        type: 'input_file',
-        file_id: video.id,
-        filename: video.label
+        type: 'input_video',
+        video: { file_id: video.id }
       });
     }
   }
