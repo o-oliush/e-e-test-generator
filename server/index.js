@@ -1,8 +1,11 @@
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
+
+dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;

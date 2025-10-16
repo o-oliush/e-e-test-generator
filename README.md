@@ -15,18 +15,31 @@ A minimal full-stack project that serves a lightweight chat interface connected 
    npm install
    ```
 
-2. Export your OpenAI API key (example for macOS/Linux):
+2. Configure your OpenAI API key (choose one):
 
-   ```bash
-   export OPENAI_API_KEY="sk-your-key"
-   ```
+   - **Using a local `.env` file (recommended for Windows):**
 
-   On Windows (PowerShell):
+     ```powershell
+     Copy-Item .env.example .env
+     notepad .env  # replace the placeholder with your real key
+     ```
 
-   ```powershell
-   setx OPENAI_API_KEY "sk-your-key"
-   ```
-   After running `setx`, open a new terminal so the environment variable is available.
+     If `Copy-Item` is unavailable, you can create the file manually with the contents from `.env.example`. The server automatically loads `.env` when it starts.
+
+   - **Exporting an environment variable:**
+
+     macOS/Linux:
+
+     ```bash
+     export OPENAI_API_KEY="sk-your-key"
+     ```
+
+     Windows PowerShell (sets the variable for future terminals):
+
+     ```powershell
+     setx OPENAI_API_KEY "sk-your-key"
+     ```
+     After running `setx`, open a new terminal so the environment variable is available.
 
 3. Start the server:
 
@@ -53,10 +66,11 @@ A minimal full-stack project that serves a lightweight chat interface connected 
 
 ## Environment variables
 
-- `OPENAI_API_KEY` (required): Your API key from the OpenAI platform.
+- `OPENAI_API_KEY` (required): Your API key from the OpenAI platform. The server reads it from the environment or a local `.env` file.
 - `PORT` (optional): Override the default server port of 3000.
 
 ## Notes
 
 - This project intentionally keeps the frontend and backend simple and framework-free for ease of understanding.
 - Conversation history is maintained on the client and sent with each request to provide context to GPT-5.
+- `.env` is listed in `.gitignore`, so your local API keys stay out of version control.
