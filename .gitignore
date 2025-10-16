@@ -34,3 +34,6 @@ dotnet-wrapper/*.sln.docstates
 
 # Deployment directory (outside workspace)
 C:/WebAppRoot/
+
+# Local deployment package
+deployment-package/
