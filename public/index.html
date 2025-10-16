@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GPT-5 Chat</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f5f7fb;
+        color: #1f2933;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: stretch;
+        background: radial-gradient(circle at top, #eef2ff, #f5f7fb 50%);
+      }
+
+      .chat-wrapper {
+        width: min(800px, 100%);
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0 1rem 1.5rem;
+      }
+
+      header {
+        text-align: center;
+        padding: 1.5rem 0 1rem;
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: clamp(1.5rem, 2.5vw, 2.25rem);
+      }
+
+      #chat {
+        flex: 1 1 auto;
+        background: #ffffffcc;
+        border-radius: 16px;
+        padding: 1.5rem;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .message {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        animation: fade-in 0.2s ease;
+      }
+
+      .message .role {
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #64748b;
+      }
+
+      .message .content {
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        line-height: 1.45;
+        background: #f8fafc;
+        color: inherit;
+        white-space: pre-wrap;
+      }
+
+      .message.assistant .content {
+        background: #2563eb;
+        color: #f8fafc;
+      }
+
+      .message.user {
+        align-items: flex-end;
+      }
+
+      .message.user .content {
+        background: #e0f2fe;
+        color: #0f172a;
+      }
+
+      form {
+        display: flex;
+        margin-top: 1.25rem;
+        gap: 0.75rem;
+      }
+
+      input[type="text"] {
+        flex: 1;
+        padding: 0.85rem 1rem;
+        border-radius: 999px;
+        border: 1px solid #cbd5f5;
+        font-size: 1rem;
+        outline: none;
+        transition: border 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      input[type="text"]:focus {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+      }
+
+      button {
+        padding: 0.85rem 1.5rem;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(135deg, #2563eb, #4338ca);
+        color: #f8fafc;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: progress;
+        box-shadow: none;
+        transform: none;
+      }
+
+      button:not(:disabled):hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 24px rgba(79, 70, 229, 0.25);
+      }
+
+      .status {
+        text-align: center;
+        font-size: 0.9rem;
+        color: #64748b;
+        margin-top: 0.5rem;
+        min-height: 1.2em;
+      }
+
+      @keyframes fade-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 600px) {
+        body {
+          padding: 0.5rem;
+        }
+
+        #chat {
+          padding: 1rem;
+        }
+
+        form {
+          flex-direction: column;
+        }
+
+        button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="chat-wrapper">
+      <header>
+        <h1>GPT-5 Chat</h1>
+        <p>Talk with the latest GPT model through a lightweight UI.</p>
+      </header>
+      <section id="chat" aria-live="polite"></section>
+      <form id="message-form">
+        <input
+          id="message-input"
+          type="text"
+          name="message"
+          placeholder="Ask me anything..."
+          autocomplete="off"
+          required
+        />
+        <button type="submit">Send</button>
+      </form>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+    </div>
+
+    <script>
+      const chatEl = document.getElementById('chat');
+      const formEl = document.getElementById('message-form');
+      const inputEl = document.getElementById('message-input');
+      const statusEl = document.getElementById('status');
+      const history = [];
+
+      function appendMessage(role, content) {
+        const wrapper = document.createElement('div');
+        wrapper.className = `message ${role}`;
+
+        const roleEl = document.createElement('div');
+        roleEl.className = 'role';
+        roleEl.textContent = role === 'assistant' ? 'GPT-5' : 'You';
+
+        const contentEl = document.createElement('div');
+        contentEl.className = 'content';
+        contentEl.textContent = content;
+
+        wrapper.appendChild(roleEl);
+        wrapper.appendChild(contentEl);
+        chatEl.appendChild(wrapper);
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
+
+      async function sendMessage(message) {
+        appendMessage('user', message);
+        history.push({ role: 'user', content: message });
+        setLoading(true, 'Thinking...');
+
+        try {
+          const response = await fetch('/api/message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, history })
+          });
+
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.error || 'Failed to reach the server');
+          }
+
+          const data = await response.json();
+          const reply = data.reply?.trim();
+
+          if (reply) {
+            history.push({ role: 'assistant', content: reply });
+            appendMessage('assistant', reply);
+          } else {
+            throw new Error('Model returned an empty response.');
+          }
+        } catch (error) {
+          console.error(error);
+          appendMessage('assistant', `⚠️ ${error.message}`);
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      function setLoading(isLoading, text = '') {
+        formEl.querySelector('button').disabled = isLoading;
+        statusEl.textContent = isLoading ? text : '';
+      }
+
+      formEl.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const value = inputEl.value.trim();
+        if (!value) return;
+        inputEl.value = '';
+        sendMessage(value);
+      });
+
+      inputEl.focus();
+    </script>
+  </body>
+</html>

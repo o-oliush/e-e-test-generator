@@ -1,0 +1,28 @@
+{
+  "name": "gpt5-chat-web",
+  "version": "1.0.0",
+  "description": "Minimal web chat client for GPT-5 using OpenAI API",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js"
+  },
+  "keywords": [
+    "openai",
+    "chatgpt",
+    "express",
+    "frontend"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "openai": "^4.55.6",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
