@@ -37,6 +37,44 @@ main {
   gap: 1.5rem;
 }
 
+.primary-nav {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.65rem 1.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  background: rgba(79, 70, 229, 0.22);
+  color: #c7d2fe;
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.nav-link:hover,
+.nav-link:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(79, 70, 229, 0.35);
+  border-color: rgba(129, 140, 248, 0.65);
+}
+
+.nav-link.active {
+  background: linear-gradient(120deg, rgba(99, 102, 241, 0.65), rgba(14, 165, 233, 0.65));
+  color: #f8fafc;
+  border-color: rgba(129, 140, 248, 0.75);
+  box-shadow: 0 16px 32px rgba(14, 165, 233, 0.35);
+}
+
 .panel {
   background: rgba(15, 23, 42, 0.65);
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -118,29 +156,151 @@ button:disabled {
 
 .test-item {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0;
   padding: 1rem;
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(30, 41, 59, 0.6);
 }
 
-.test-meta {
-  flex: 1 1 65%;
+.test-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
-.test-title {
-  margin: 0 0 0.5rem;
-  font-size: 1.25rem;
+.test-toggle {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: flex-start;
+  margin-top: 0;
+  padding: 0.35rem 0.25rem;
+  background: transparent;
+  border-radius: 10px;
+  border: none;
+  color: inherit;
+  box-shadow: none;
+  text-align: left;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: color 0.15s ease, transform 0.15s ease;
 }
 
-.test-preview {
+.test-toggle strong {
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.test-toggle:hover,
+.test-toggle:focus-visible {
+  color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.test-toggle:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.75);
+  outline-offset: 3px;
+}
+
+.test-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.test-toolbar .run-button {
+  margin-top: 0;
+}
+
+.test-content {
+  flex-basis: 100%;
+  margin-top: 0.75rem;
+}
+
+.markdown-content {
   margin: 0;
-  color: #cbd5f5;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.55);
   font-size: 0.95rem;
+  color: #e2e8f0;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  margin: 1.25rem 0 0.75rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.markdown-content h1 { font-size: 1.6rem; }
+.markdown-content h2 { font-size: 1.4rem; }
+.markdown-content h3 { font-size: 1.2rem; }
+.markdown-content h4 { font-size: 1.05rem; }
+
+.markdown-content p {
+  margin: 0.75rem 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 0.75rem 0 0.75rem 1.25rem;
+  padding-left: 1.25rem;
+}
+
+.markdown-content li + li {
+  margin-top: 0.35rem;
+}
+
+.markdown-content code {
+  font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+  background: rgba(15, 23, 42, 0.85);
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+}
+
+.markdown-content pre {
+  background: rgba(15, 23, 42, 0.85);
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+.markdown-content a {
+  color: #38bdf8;
+  text-decoration: underline;
+}
+
+.markdown-content strong {
+  color: #f1f5f9;
+}
+
+.markdown-content .loading {
+  margin: 0;
+  color: #94a3b8;
+}
+
+.markdown-content .error {
+  margin: 0;
+  color: #fda4af;
+}
+
+.loading {
+  color: #94a3b8;
+}
+
+.error {
+  color: #fda4af;
 }
 
 .log {
@@ -199,11 +359,15 @@ button:disabled {
     padding: 0 1rem 2rem;
   }
 
-  .test-meta {
-    flex-basis: 100%;
+  .run-button {
+    width: 100%;
   }
 
-  .run-button {
+  .test-header {
+    flex-wrap: wrap;
+  }
+
+  .test-toggle {
     width: 100%;
   }
 }

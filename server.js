@@ -87,10 +87,15 @@ app.get('/api/tests', async (_req, res) => {
           const fullPath = path.join(testsDir, file);
           const content = await fs.promises.readFile(fullPath, 'utf8');
           const { title, preview } = extractTitleAndPreview(content);
+          const firstLine = (content
+            .split(/\r?\n/)
+            .find((line) => line.trim().length > 0) || '')
+            .trim();
           return {
             fileId: file,
             title,
             preview,
+            firstLine,
             updatedAt: (await fs.promises.stat(fullPath)).mtime
           };
         })
@@ -102,6 +107,27 @@ app.get('/api/tests', async (_req, res) => {
   } catch (error) {
     console.error('Failed to load tests', error);
     res.status(500).json({ error: 'Failed to load tests.' });
+  }
+});
+
+app.get('/api/tests/:fileId', async (req, res) => {
+  const safeFile = path.basename(req.params.fileId);
+  const testPath = path.join(testsDir, safeFile);
+
+  try {
+    const content = await fs.promises.readFile(testPath, 'utf8');
+    const { title } = extractTitleAndPreview(content);
+    res.json({
+      fileId: safeFile,
+      title,
+      content
+    });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: 'Test file not found.' });
+    }
+    console.error('Failed to load test content', error);
+    res.status(500).json({ error: 'Failed to load test content.' });
   }
 });
 
