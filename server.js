@@ -4,6 +4,9 @@ const path = require('path');
 const fs = require('fs');
 const { OpenAI } = require('openai');
 
+// this object help to identify if the test passed or failed based on the LLM output
+const TestResultAnalyzer = require('./testResultAnalyzer');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -31,8 +34,12 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const openai = new OpenAI({ apiKey: 'api_key' });
+const openAIapiKey = 'api_key';
 const defaultModel = 'gpt-5';
+const openai = new OpenAI({ apiKey: openAIapiKey });
+
+// Initialize test result analyzer
+const testAnalyzer = new TestResultAnalyzer(openAIapiKey, defaultModel);
 
 async function callOpenAI({ systemPrompt, userPrompt }) {
   if (!openai) {
@@ -157,10 +164,21 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
     const userPrompt = `Execute or verify the following test prompt:\n\n${content}`;
     const aiMessage = await callOpenAI({ systemPrompt, userPrompt });
 
+    const aiContent = aiMessage.content || '';
+    
+    // Analyze the test result to determine success/failure
+    const analysis = await testAnalyzer.analyzeTestResult(aiContent);
+
     res.json({
-      result: aiMessage.content || '',
+      result: aiContent,
       test: {
         fileId: safeFile
+      },
+      analysis: {
+        success: analysis.success,
+        confidence: analysis.confidence,
+        reason: analysis.reason,
+        method: analysis.method
       }
     });
   } catch (error) {
@@ -174,6 +192,150 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
+});
+
+app.get('/api/test1', async (_req, res) => {
+
+  const testResult = `
+      ## Test Results for Best Laptop Deals
+
+### Test Execution Summary
+The end-to-end test script for "Best Laptop Deals" was executed as per the provided steps. Below is the report detailing each step, including actions taken, observations, and whether the expectations were met.
+
+### Step-by-Step Results
+
+1. **Navigate to https://www.bestlaptop.deals.**
+   - **Result**: Navigation successful. The page loads without any issues.
+
+2. **Focus on the search bar and type "laptop".**
+   - **Result**: Focused successfully, typed "laptop".
+
+3. **Click the search button next to the search bar.**
+   - **Result**: Search initiated; results page loading.
+
+4. **Confirm that the search results header indicates results for "laptop".**
+   - **Result**: Search results header confirmed, displaying results relevant to "laptop".
+
+5. **Hover over the "Brands" filter section.**
+   - **Result**: Hover action successful; the filter menu displayed.
+
+6. **Click to open the brand dropdown menu.**
+   - **Result**: Dropdown menu opened successfully.
+
+7. **Select the Dell checkbox from the dropdown options.**
+   - **Result**: Dell checkbox selected.
+
+8. **Click the apply button to apply the selected filters.**
+   - **Result**: Filter applied successfully; results refreshed.
+
+9. **Verify that results are updated to display only Dell laptops.**
+   - **Result**: Results confirmed to display only Dell laptops.
+
+10. **Hover over the first laptop displayed in the search results.**
+    - **Result**: Hover action successful; additional options displayed.
+
+11. **Click the details button for that laptop.**
+    - **Result**: Navigated to the laptop details page successfully.
+
+12. **Wait for the laptop details page to fully load.**
+    - **Result**: Laptop details page loaded completely.
+
+13. **Click the "Add to Cart" button on the laptop details page.**
+    - **Result**: Laptop successfully added to the shopping cart.
+
+14. **Click the cart icon in the top right corner.**
+    - **Result**: Cart opened successfully.
+
+15. **Verify that the item is present in the shopping cart.**
+    - **Result**: Item confirmed in the shopping cart.
+
+### Final Outcome
+- **Confirmation that Dell brand laptops are displayed**: **Successful**
+- **Successful navigation to the laptop details page**: **Successful**
+- **Confirmation that the laptop has been added to the shopping cart**: **Successful**
+
+### Overall Test Conclusion
+The test executions for navigating, filtering, and adding items to the cart on the "Best Laptop Deals" website were all successful. All actions performed as intended, and the expectations were met successfully throughout the test. 
+
+**All steps executed without errors, and the expected results were validated.** The test has been concluded with a status of **PASS**.
+      `;
+      const result = await testAnalyzer.analyzeTestResult(testResult);
+      
+      // expect(result.success).toBe(true);
+      // expect(result.confidence).toBeGreaterThan(0.7);
+      
+      res.json({ status: 'ok', result: result.success, confidence: result.confidence, expectedReasult: true });
+});
+
+app.get('/api/test2', async (_req, res) => {
+   const testResult = `
+      ## Test Results for Best Laptop Deals
+
+### Test Execution Summary
+The end-to-end test script for "Best Laptop Deals" was executed as per the provided steps. Below is the report detailing each step, including actions taken, observations, and whether the expectations were met.
+
+### Step-by-Step Results
+
+1. **Navigate to https://www.bestlaptop.deals.**
+   - **Result**: Navigation successful. The page loads without any issues.
+
+2. **Focus on the search bar and type "laptop".**
+   - **Result**: Focused successfully, typed "laptop".
+
+3. **Click the search button next to the search bar.**
+   - **Result**: Search initiated; results page loading.
+
+4. **Confirm that the search results header indicates results for "laptop".**
+   - **Result**: Search results header confirmed, displaying results relevant to "laptop".
+
+5. **Hover over the "Brands" filter section.**
+   - **Result**: Hover action successful; the filter menu displayed.
+
+6. **Click to open the brand dropdown menu.**
+   - **Result**: Dropdown menu opened successfully.
+
+7. **Select the Dell checkbox from the dropdown options.**
+   - **Result**: Dell checkbox selected.
+
+8. **Click the apply button to apply the selected filters.**
+   - **Result**: Filter applied successfully; results refreshed.
+
+9. **Verify that results are updated to display only Dell laptops.**
+   - **Result**: Results confirmed to display only Dell laptops.
+
+10. **Hover over the first laptop displayed in the search results.**
+    - **Result**: Hover action successful; additional options displayed.
+
+11. **Click the details button for that laptop.**
+    - **Result**: Navigated to the laptop details page successfully.
+
+12. **Wait for the laptop details page to fully load.**
+    - **Result**: Laptop details page loaded completely.
+
+13. **Click the "Add to Cart" button on the laptop details page.**
+    - **Result**: Laptop successfully added to the shopping cart.
+
+14. **Click the cart icon in the top right corner.**
+    - **Result**: Cart opened successfully.
+
+15. **Verify that the item is present in the shopping cart.**
+    - **Result**: Item confirmed in the shopping cart.
+
+### Final Outcome
+- **Confirmation that Dell brand laptops are displayed**: **Failed**
+- **Successful navigation to the laptop details page**: **Successful**
+- **Confirmation that the laptop has been added to the shopping cart**: **Successful**
+
+### Overall Test Conclusion
+The test executions for navigating, filtering, and adding items to the cart on the "Best Laptop Deals" website were all failed. All actions performed as intended, and the expectations were met successfully throughout the test.
+
+**Some steps executed with errors, and the expected results were validated.** The test has been concluded with a status of **FAIL**.
+      `;
+      const result = await testAnalyzer.analyzeTestResult(testResult);
+      console.log('Test analysis result:', result);
+      // expect(result.success).toBe(false);
+      // expect(result.confidence).toBeGreaterThan(0.7);
+  res.json({ status: 'ok', result: result.success, confidence: result.confidence, expectedReasult: false });
 });
 
 app.listen(PORT, () => {
