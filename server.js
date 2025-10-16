@@ -12,8 +12,9 @@ const PORT = process.env.PORT || 3000;
 
 const testsDir = path.join(__dirname, 'tests');
 const uploadsDir = path.join(__dirname, 'uploads');
+const resultsDir = path.join(__dirname, 'test-results');
 
-for (const dir of [testsDir, uploadsDir]) {
+for (const dir of [testsDir, uploadsDir, resultsDir]) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -66,6 +67,42 @@ function extractTitleAndPreview(content) {
   return { title, preview };
 }
 
+async function appendTestHistory(fileId, entry) {
+  const safeFile = path.basename(fileId);
+  const historyPath = path.join(resultsDir, `${safeFile}.jsonl`);
+  const serialized = JSON.stringify(entry) + '\n';
+  await fs.promises.appendFile(historyPath, serialized, 'utf8');
+}
+
+async function readTestHistory(fileId, limit = 20) {
+  const safeFile = path.basename(fileId);
+  const historyPath = path.join(resultsDir, `${safeFile}.jsonl`);
+
+  try {
+    const data = await fs.promises.readFile(historyPath, 'utf8');
+    const lines = data.split('\n').filter(Boolean);
+    const entries = lines.map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch (error) {
+        console.warn(`Failed to parse history line for ${safeFile}:`, error.message);
+        return null;
+      }
+    }).filter(Boolean);
+
+    if (!limit || limit <= 0) {
+      return entries;
+    }
+
+    return entries.slice(-limit).reverse();
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+}
+
 app.post('/api/upload', upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded.' });
@@ -87,10 +124,15 @@ app.get('/api/tests', async (_req, res) => {
           const fullPath = path.join(testsDir, file);
           const content = await fs.promises.readFile(fullPath, 'utf8');
           const { title, preview } = extractTitleAndPreview(content);
+          const firstLine = (content
+            .split(/\r?\n/)
+            .find((line) => line.trim().length > 0) || '')
+            .trim();
           return {
             fileId: file,
             title,
             preview,
+            firstLine,
             updatedAt: (await fs.promises.stat(fullPath)).mtime
           };
         })
@@ -102,6 +144,27 @@ app.get('/api/tests', async (_req, res) => {
   } catch (error) {
     console.error('Failed to load tests', error);
     res.status(500).json({ error: 'Failed to load tests.' });
+  }
+});
+
+app.get('/api/tests/:fileId', async (req, res) => {
+  const safeFile = path.basename(req.params.fileId);
+  const testPath = path.join(testsDir, safeFile);
+
+  try {
+    const content = await fs.promises.readFile(testPath, 'utf8');
+    const { title } = extractTitleAndPreview(content);
+    res.json({
+      fileId: safeFile,
+      title,
+      content
+    });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: 'Test file not found.' });
+    }
+    console.error('Failed to load test content', error);
+    res.status(500).json({ error: 'Failed to load test content.' });
   }
 });
 
@@ -169,6 +232,24 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
     // Analyze the test result to determine success/failure
     const analysis = await testAnalyzer.analyzeTestResult(aiContent);
 
+    const historyEntry = {
+      timestamp: new Date().toISOString(),
+      testFile: safeFile,
+      analysis: {
+        success: analysis.success,
+        confidence: analysis.confidence,
+        reason: analysis.reason,
+        method: analysis.method
+      },
+      result: aiContent
+    };
+
+    try {
+      await appendTestHistory(safeFile, historyEntry);
+    } catch (historyError) {
+      console.error('Failed to store test history', historyError);
+    }
+
     res.json({
       result: aiContent,
       test: {
@@ -179,7 +260,8 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
         confidence: analysis.confidence,
         reason: analysis.reason,
         method: analysis.method
-      }
+      },
+      historyEntry
     });
   } catch (error) {
     if (error.code === 'ENOENT') {
@@ -187,6 +269,23 @@ app.post('/api/tests/:fileId/run', async (req, res) => {
     }
     console.error('Failed to run test', error);
     res.status(500).json({ error: 'Failed to run test.' });
+  }
+});
+
+app.get('/api/tests/:fileId/history', async (req, res) => {
+  const safeFile = path.basename(req.params.fileId);
+  const { limit } = req.query;
+
+  try {
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : 20;
+    const history = await readTestHistory(safeFile, Number.isNaN(parsedLimit) ? 20 : parsedLimit);
+    res.json({
+      fileId: safeFile,
+      entries: history
+    });
+  } catch (error) {
+    console.error('Failed to load test history', error);
+    res.status(500).json({ error: 'Failed to load test history.' });
   }
 });
 

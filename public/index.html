@@ -10,6 +10,10 @@
     <header>
       <h1>AI-Powered Test Generator</h1>
       <p class="subtitle">Upload context, request prompts, and run stored Markdown tests with a single-page experience.</p>
+      <nav class="primary-nav" role="navigation" aria-label="Primary">
+        <a class="nav-link active" href="index.html" aria-current="page">Test Generator</a>
+        <a class="nav-link" href="tests.html">Stored Test Prompts</a>
+      </nav>
     </header>
 
     <main>
@@ -29,26 +33,11 @@
         </form>
       </section>
 
-      <section class="panel" id="tests-panel">
-        <h2>3. Stored Test Prompts</h2>
-        <div id="tests-list" class="list"></div>
-      </section>
-
       <section class="panel" id="activity-panel">
-        <h2>Activity &amp; AI Responses</h2>
+        <h2>3. Activity &amp; AI Responses</h2>
         <div id="activity-log" class="log" aria-live="polite"></div>
       </section>
     </main>
-
-    <template id="test-item-template">
-      <article class="test-item">
-        <div class="test-meta">
-          <h3 class="test-title"></h3>
-          <p class="test-preview"></p>
-        </div>
-        <button class="run-button" type="button">Run</button>
-      </article>
-    </template>
 
     <script src="app.js" defer></script>
   </body>
