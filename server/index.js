@@ -18,7 +18,9 @@ if (!process.env.OPENAI_API_KEY) {
   process.exit(1);
 }
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey:
+   process.env.OPENAI_API_KEY 
+});
 
 app.use(cors());
 app.use(express.json());
@@ -43,20 +45,13 @@ app.post('/api/message', async (req, res) => {
   ];
 
   try {
-    const response = await openai.responses.create({
-      model: 'gpt-5.0',
-      input: conversation.map((entry) => ({
-        role: entry.role,
-        content: [
-          {
-            type: 'text',
-            text: entry.content
-          }
-        ]
-      }))
+    const response = await openai.chat.completions.create({
+      model: 'gpt-5',
+      messages: conversation,
+      max_completion_tokens: 1000
     });
 
-    const reply = (response.output_text ?? '').trim();
+    const reply = response.choices[0]?.message?.content?.trim();
 
     if (!reply) {
       return res.status(502).json({ error: 'No response received from model.' });
