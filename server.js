@@ -46,8 +46,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const openAIapiKey = 'api-key';
-const defaultModel = 'gpt-5';
+const openAIapiKey = process.env.OPENAI_API_KEY || 'api_key';
+const defaultModel = process.env.OPENAI_MODEL || 'gpt-5';
 const openai = new OpenAI({ apiKey: openAIapiKey });
 
 // Initialize test result analyzer

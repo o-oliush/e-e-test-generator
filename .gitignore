@@ -4,3 +4,37 @@ uploads/
 test-results/
 .DS_Store
 npm-debug.log*
+
+# .NET Core build outputs
+dotnet-wrapper/bin/
+dotnet-wrapper/obj/
+dotnet-wrapper/logs/
+dotnet-wrapper/publish/
+dotnet-wrapper/*.user
+dotnet-wrapper/.vs/
+
+# .NET Core packages
+dotnet-wrapper/packages/
+
+# Build results
+dotnet-wrapper/[Dd]ebug/
+dotnet-wrapper/[Dd]ebugPublic/
+dotnet-wrapper/[Rr]elease/
+dotnet-wrapper/[Rr]eleases/
+dotnet-wrapper/x64/
+dotnet-wrapper/x86/
+dotnet-wrapper/bld/
+
+# Visual Studio files
+dotnet-wrapper/.vscode/
+dotnet-wrapper/.vs/
+dotnet-wrapper/*.suo
+dotnet-wrapper/*.user
+dotnet-wrapper/*.userosscache
+dotnet-wrapper/*.sln.docstates
+
+# Deployment directory (outside workspace)
+C:/WebAppRoot/
+
+# Local deployment package
+deployment-package/
