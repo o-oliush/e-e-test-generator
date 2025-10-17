@@ -82,7 +82,7 @@ async function handleFileSelection(event) {
 
 async function submitMessage(event) {
   event.preventDefault();
-  const url = 'https://www.bestlaptop.deals/';//urlInput.value.trim(); - should be fixed!!!!!
+  const url = urlInput.value.trim();
   const text = messageInput.value.trim();
   if (!url) {
     addLogEntry('URL required', 'Please enter a website URL before sending.', 'error');
