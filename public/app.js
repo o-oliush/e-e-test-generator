@@ -1,6 +1,7 @@
 const fileInput = document.getElementById('file-input');
 const uploadedFilesContainer = document.getElementById('uploaded-files');
 const messageForm = document.getElementById('message-form');
+const urlInput = document.getElementById('url-input');
 const messageInput = document.getElementById('message-input');
 const activityLog = document.getElementById('activity-log');
 
@@ -81,9 +82,10 @@ async function handleFileSelection(event) {
 
 async function submitMessage(event) {
   event.preventDefault();
+  const url = 'https://www.bestlaptop.deals/';//urlInput.value.trim(); - should be fixed!!!!!
   const text = messageInput.value.trim();
-  if (!text) {
-    addLogEntry('Message required', 'Please enter a message before sending.', 'error');
+  if (!url) {
+    addLogEntry('URL required', 'Please enter a website URL before sending.', 'error');
     return;
   }
 
@@ -98,6 +100,7 @@ async function submitMessage(event) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
+        url,
         message: text,
         files: uploadedFiles
       })
