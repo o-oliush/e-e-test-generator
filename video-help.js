@@ -11,7 +11,6 @@ import path from "path";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
-import OpenAI from "openai";
 
 // Set the ffmpeg and ffprobe paths to use the static binaries
 ffmpeg.setFfmpegPath(ffmpegStatic);
@@ -20,8 +19,8 @@ ffmpeg.setFfprobePath(ffprobeStatic.path);
 /**
  * Extract N evenly spaced frames from a video file using ffmpeg
  */
-export async function extractFrames(videoPath, outputDir, frameCount = 5) {
-  return new Promise((resolve, reject) => {
+export async function extractFrames(videoPath, outputDir, fps = 10) {
+  return new Promise(async (resolve, reject) => {
     try {
       // Ensure output directory exists
       if (!fs.existsSync(outputDir)) {
@@ -41,11 +40,24 @@ export async function extractFrames(videoPath, outputDir, frameCount = 5) {
         fs.unlinkSync(path.join(outputDir, file));
       });
 
-      console.log(`🎬 Extracting ${frameCount} frames from ${videoPath}...`);
-
       // Create unique timestamp for this extraction session
       const timestamp = Date.now();
       const uniquePrefix = `frame-${timestamp}`;
+
+      const duration = await new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(videoPath, function(err, metadata) {
+          if (err != null) {
+            reject(err)
+          }
+          //console.dir(metadata); // all metadata
+          console.log(metadata.format.duration);
+          resolve(metadata.format.duration);
+        });
+      })
+      
+      const totalFrames = Math.min(150, Math.floor(fps * duration));
+
+      console.log(`🎬 Extracting ${totalFrames} frames from ${videoPath}...`);
 
       ffmpeg(videoPath)
         .on('start', (commandLine) => {
@@ -69,12 +81,11 @@ export async function extractFrames(videoPath, outputDir, frameCount = 5) {
           reject(new Error(`FFmpeg failed: ${error.message}`));
         })
         .screenshots({
-          count: frameCount,
+          count: totalFrames,
           folder: outputDir,
           filename: `${uniquePrefix}-%i.jpg`,
           size: '640x480'
         });
-
     } catch (error) {
       console.error('❌ Error in extractFrames:', error);
       reject(error);
