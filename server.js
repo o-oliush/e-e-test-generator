@@ -53,19 +53,32 @@ const openai = new OpenAI({ apiKey: openAIapiKey });
 // Initialize test result analyzer
 const testAnalyzer = new TestResultAnalyzer(openAIapiKey, defaultModel);
 
-async function callOpenAI({ systemPrompt, userPrompt }) {
+async function callOpenAI({ systemPrompt, userPrompt, images }) {
   if (!openai) {
     return {
       content: 'OpenAI API key not configured. Set OPENAI_API_KEY to enable AI responses.'
     };
   }
 
+  const content = [{
+    type: 'text',
+    text: userPrompt
+  }]
+
+  if (images != null) {
+    content.push(...images.map((filePath) => ({
+      type: "image_url",
+      image_url: {
+        url: `data:image/jpeg;base64,${fs.readFileSync(filePath, 'base64')}`
+      }
+    })));
+  }
 
   const completion = await openai.chat.completions.create({
     model: defaultModel,
     messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
+      { role: 'user', content }
     ]
   });
 
@@ -181,14 +194,13 @@ app.get('/api/tests/:fileId', async (req, res) => {
 });
 
 app.post('/api/message', async (req, res) => {
-  const { message, files = [] } = req.body || {};
+  const { url, message, files = [] } = req.body || {};
 
-  if (!message || typeof message !== 'string') {
-    return res.status(400).json({ error: 'Message is required.' });
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL is required.' });
   }
 
   try {
-
     let filePath1;
     for (const file of files) {
       filePath1 = path.join(uploadsDir, path.basename(file.fileId));
@@ -196,48 +208,29 @@ app.post('/api/message', async (req, res) => {
 
     const videoPath = filePath1;
     const outputDir = "./frames";
-    const frameCount = 100; // should be calculated based on video length
     let aiContent = '';
     try {
       console.log("Extracting frames...");
-      const frames = await extractFrames(videoPath, outputDir, frameCount);
+      const frames = await extractFrames(videoPath, outputDir);
       console.log(`Extracted ${frames.length} frames.`);
 
       // Inline askAboutFrames implementation
       try {
-        const systemPrompt = `You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. 
-        Include clear titles and step-by-step instructions. 
-        Expected result of the test: ` + message;
-        console.log(`Analyzing ${frames.length} frames with OpenAI...`);        
-        // Prepare image inputs for OpenAI vision API
-        const imageInputs = frames.map((filePath) => ({
-          type: "image_url",
-          image_url: {
-            url: `data:image/jpeg;base64,${fs.readFileSync(filePath, 'base64')}`
-          }
-        }));
+        const aiMessage = await callOpenAI({
+          systemPrompt: `Analyze video frames sequentially`,
+          userPrompt: `You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. 
+Include clear titles and step-by-step instructions.
 
-        // Create the message content with text and images
-        const content = [
-          { type: "text", text: systemPrompt },
-          ...imageInputs
-        ];
-
-        const response = await openai.chat.completions.create({
-          model: "gpt-5", 
-          messages: [
-            {
-              role: "user",
-              content: content
-            }
-          ]
+Website under test: ${url}
+Expected result of the test: ${message}
+`,
+          images: frames
         });
 
-        const result = response.choices[0].message.content || '';
+        aiContent = aiMessage.content || '';
         console.log("Model output:");
-        console.log(result);
-        aiContent = result;
-        
+        console.log(aiContent);
+
         // Clean up extracted frames after analysis
         console.log("Cleaning up extracted frames...");
         for (const framePath of frames) {
@@ -255,14 +248,16 @@ app.post('/api/message', async (req, res) => {
         console.error('Error in video analysis:', analysisError);
         throw new Error(`OpenAI analysis failed: ${analysisError.message}`);
       }
-      
     } catch (err) {
       console.error("Error:", err);
       // Continue with text-only processing if video fails
     }
-    
+
+    const safeUrl = url
+      .replace(/\W+/g, '-')
+      .replace(/(^\W+)|(\W+$)/g, '');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `test-${timestamp}.md`;
+    const filename = `test-${timestamp}-${safeUrl}.md`;
     const filePath = path.join(testsDir, filename);
     await fs.promises.writeFile(filePath, aiContent, 'utf8');
 
