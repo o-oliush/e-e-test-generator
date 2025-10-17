@@ -55,14 +55,14 @@
   --creatio-toggle-text: #0d2e4e;
   --creatio-toggle-hover: rgba(13, 46, 78, 0.14);
   --creatio-markdown-bg: #ffffff;
-  --creatio-markdown-border: rgba(13, 46, 78, 0.12);
+  --creatio-markdown-border: rgba(0, 0, 0, 0.08);
   --creatio-markdown-text: #1f3a5c;
-  --creatio-markdown-heading: #0d2e4e;
+  --creatio-markdown-heading: var(--creatio-markdown-text);
   --creatio-markdown-muted: #627086;
-  --creatio-markdown-code-bg: rgba(255, 64, 19, 0.08);
-  --creatio-markdown-code-text: #ff4013;
+  --creatio-markdown-code-bg: rgba(0, 0, 0, 0.06);
+  --creatio-markdown-code-text: var(--creatio-markdown-text);
   --creatio-markdown-pre-bg: #f9fafc;
-  --creatio-markdown-pre-border: rgba(13, 46, 78, 0.12);
+  --creatio-markdown-pre-border: rgba(0, 0, 0, 0.08);
 }
 
 :root[data-theme="dark"] {
@@ -121,14 +121,14 @@
   --creatio-toggle-text: rgba(255, 64, 19, 0.85);
   --creatio-toggle-hover: rgba(255, 64, 19, 0.3);
   --creatio-markdown-bg: rgba(19, 23, 33, 0.95);
-  --creatio-markdown-border: rgba(244, 247, 251, 0.14);
+  --creatio-markdown-border: rgba(244, 247, 251, 0.16);
   --creatio-markdown-text: #e4e9f5;
-  --creatio-markdown-heading: #f5f7fb;
+  --creatio-markdown-heading: var(--creatio-markdown-text);
   --creatio-markdown-muted: #95a3c4;
-  --creatio-markdown-code-bg: rgba(255, 64, 19, 0.28);
-  --creatio-markdown-code-text: #ff4013;
+  --creatio-markdown-code-bg: rgba(244, 247, 251, 0.14);
+  --creatio-markdown-code-text: var(--creatio-markdown-text);
   --creatio-markdown-pre-bg: rgba(12, 15, 22, 0.92);
-  --creatio-markdown-pre-border: rgba(94, 108, 136, 0.45);
+  --creatio-markdown-pre-border: rgba(244, 247, 251, 0.12);
 }
 
 * {
@@ -618,7 +618,6 @@ button:disabled {
 .markdown-content h6 {
   margin: 1.25rem 0 0.75rem;
   font-weight: 600;
-  color: var(--creatio-markdown-heading);
   font-family: 'Montserrat', 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
@@ -646,7 +645,7 @@ button:disabled {
   background: var(--creatio-markdown-code-bg);
   padding: 0.2rem 0.45rem;
   border-radius: 6px;
-  color: var(--creatio-markdown-code-text);
+  color: inherit;
   font-size: 0.95em;
 }
 
@@ -748,22 +747,21 @@ button:disabled {
 }
 
 .markdown-content a {
-  color: var(--creatio-outline-primary);
+  color: inherit;
   text-decoration: underline;
 }
 
 .markdown-content strong {
-  color: var(--creatio-outline-primary);
+  font-weight: 700;
 }
 
 .markdown-content .loading {
   margin: 0;
-  color: var(--creatio-markdown-muted);
 }
 
 .markdown-content .error {
   margin: 0;
-  color: var(--creatio-outline-primary);
+  font-weight: 600;
 }
 
 .loading {
