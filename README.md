@@ -10,6 +10,7 @@ This project demonstrates a lightweight full-stack workflow for generating and r
 - ▶️ Run any stored test prompt by resending it to the AI for simulated execution or verification.
 - 📊 Review pass/fail status, confidence, and execution logs directly from the Stored Test Prompts page with inline analyzer summaries.
 - 🕓 Inspect a persisted execution history for every test, stored under `test-results/` so you can revisit previous attempts.
+- 🎨 Switch between Creatio-inspired light and dark themes using the built-in toggle—preferences persist across visits.
 
 ## Getting Started
 
