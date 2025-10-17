@@ -46,7 +46,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const openAIapiKey = process.env.OPENAI_API_KEY || 'api_key';
+const openAIapiKey = process.env.OPENAI_API_KEY || 'api-key';
 const defaultModel = process.env.OPENAI_MODEL || 'gpt-5';
 const openai = new OpenAI({ apiKey: openAIapiKey });
 
@@ -218,8 +218,8 @@ app.post('/api/message', async (req, res) => {
       try {
         const aiMessage = await callOpenAI({
           systemPrompt: `Analyze video frames sequentially`,
-          userPrompt: `You are an AI assistant that generates high-quality end-to-end test prompts in Markdown format. 
-Include clear titles and step-by-step instructions.
+          userPrompt: `You are an AI assistant that generates high-quality end-to-end test prompts only in Markdown format. Do not generate any other content.
+        Include clear titles and step-by-step instructions.
 
 Website under test: ${url}
 Expected result of the test: ${message}
